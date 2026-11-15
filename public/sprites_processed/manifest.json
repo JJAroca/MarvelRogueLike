@@ -1,0 +1,832 @@
+{
+  "version": 2,
+  "fps": {
+    "walk": 8,
+    "attack": 12
+  },
+  "sprites": {
+    "ironman": {
+      "file": "ironman.png",
+      "cell": 64,
+      "anims": {
+        "walk_down": {
+          "row": 0,
+          "frames": 5
+        },
+        "walk_up": {
+          "row": 1,
+          "frames": 5
+        },
+        "walk_left": {
+          "row": 2,
+          "frames": 5
+        },
+        "walk_right": {
+          "row": 3,
+          "frames": 5
+        },
+        "attack_down": {
+          "row": 4,
+          "frames": 4
+        },
+        "attack_right": {
+          "row": 5,
+          "frames": 4
+        },
+        "attack_left": {
+          "row": 6,
+          "frames": 4
+        }
+      },
+      "source": "Ironman.jpg"
+    },
+    "hulkbuster": {
+      "file": "hulkbuster.png",
+      "cell": 96,
+      "anims": {
+        "walk_down": {
+          "row": 0,
+          "frames": 4
+        },
+        "walk_up": {
+          "row": 1,
+          "frames": 8
+        },
+        "walk_left": {
+          "row": 2,
+          "frames": 4
+        },
+        "walk_right": {
+          "row": 3,
+          "frames": 4
+        },
+        "attack_down": {
+          "row": 4,
+          "frames": 3
+        },
+        "attack": {
+          "row": 5,
+          "frames": 6
+        }
+      },
+      "source": "Hulk-Buster.jpg"
+    },
+    "ghost-rider-blue": {
+      "file": "ghost-rider-blue.png",
+      "cell": 64,
+      "anims": {
+        "walk_down": {
+          "row": 0,
+          "frames": 4
+        },
+        "walk_up": {
+          "row": 1,
+          "frames": 4
+        },
+        "walk_right": {
+          "row": 2,
+          "frames": 4
+        },
+        "walk_left": {
+          "row": 3,
+          "frames": 4
+        },
+        "attack_down": {
+          "row": 4,
+          "frames": 4
+        },
+        "attack_up": {
+          "row": 5,
+          "frames": 4
+        },
+        "attack_right": {
+          "row": 6,
+          "frames": 4
+        },
+        "attack_left": {
+          "row": 7,
+          "frames": 3
+        }
+      },
+      "source": "Ghost-Rider-Blue.jpg"
+    },
+    "ghost-rider-normal": {
+      "file": "ghost-rider-normal.png",
+      "cell": 64,
+      "anims": {
+        "walk_down": {
+          "row": 0,
+          "frames": 4
+        },
+        "walk_up": {
+          "row": 1,
+          "frames": 4
+        },
+        "walk_right": {
+          "row": 2,
+          "frames": 4
+        },
+        "walk_left": {
+          "row": 3,
+          "frames": 4
+        },
+        "attack_down": {
+          "row": 4,
+          "frames": 4
+        },
+        "attack_up": {
+          "row": 5,
+          "frames": 4
+        },
+        "attack_right": {
+          "row": 6,
+          "frames": 4
+        },
+        "attack_left": {
+          "row": 7,
+          "frames": 3
+        }
+      },
+      "source": "Ghost-Rider-Blue.jpg"
+    },
+    "hulk": {
+      "file": "hulk.png",
+      "cell": 96,
+      "anims": {
+        "walk_down": {
+          "row": 0,
+          "frames": 8
+        },
+        "walk_up": {
+          "row": 1,
+          "frames": 8
+        },
+        "walk_left": {
+          "row": 2,
+          "frames": 8
+        },
+        "walk_right": {
+          "row": 3,
+          "frames": 8
+        },
+        "attack": {
+          "row": 4,
+          "frames": 5
+        },
+        "roar": {
+          "row": 5,
+          "frames": 3
+        }
+      },
+      "source": "Hulk.png"
+    },
+    "banner": {
+      "file": "banner.png",
+      "cell": 64,
+      "anims": {
+        "walk_down": {
+          "row": 0,
+          "frames": 4
+        },
+        "walk_up": {
+          "row": 1,
+          "frames": 6
+        },
+        "walk_right": {
+          "row": 2,
+          "frames": 3
+        },
+        "walk_left": {
+          "row": 3,
+          "frames": 3
+        },
+        "attack_right": {
+          "row": 4,
+          "frames": 2
+        },
+        "attack_left": {
+          "row": 5,
+          "frames": 2
+        },
+        "attack_down": {
+          "row": 6,
+          "frames": 2
+        }
+      },
+      "source": "Banner.jpg"
+    },
+    "doctor-strange": {
+      "file": "doctor-strange.png",
+      "cell": 64,
+      "anims": {
+        "walk_down": {
+          "row": 0,
+          "frames": 8
+        },
+        "walk_up": {
+          "row": 1,
+          "frames": 8
+        },
+        "walk_left": {
+          "row": 2,
+          "frames": 8
+        },
+        "walk_right": {
+          "row": 3,
+          "frames": 7
+        },
+        "attack_down": {
+          "row": 4,
+          "frames": 8
+        },
+        "attack_up": {
+          "row": 5,
+          "frames": 8
+        }
+      },
+      "source": "Doctor-Strange.png"
+    },
+    "magneto": {
+      "file": "magneto.png",
+      "cell": 96,
+      "anims": {
+        "walk_down": {
+          "row": 0,
+          "frames": 4
+        },
+        "walk_up": {
+          "row": 1,
+          "frames": 4
+        },
+        "walk_right": {
+          "row": 2,
+          "frames": 3
+        },
+        "walk_left": {
+          "row": 3,
+          "frames": 3
+        },
+        "attack": {
+          "row": 4,
+          "frames": 4
+        },
+        "attack_up": {
+          "row": 5,
+          "frames": 3
+        }
+      },
+      "source": "Magneto.jpg"
+    },
+    "carnage": {
+      "file": "carnage.png",
+      "cell": 96,
+      "anims": {
+        "walk_down": {
+          "row": 0,
+          "frames": 5
+        },
+        "walk_up": {
+          "row": 1,
+          "frames": 4
+        },
+        "walk_left": {
+          "row": 2,
+          "frames": 4
+        },
+        "walk_right": {
+          "row": 3,
+          "frames": 4
+        },
+        "attack": {
+          "row": 4,
+          "frames": 3
+        },
+        "attack_right": {
+          "row": 5,
+          "frames": 2
+        },
+        "attack_left": {
+          "row": 6,
+          "frames": 2
+        }
+      },
+      "source": "Carnage.png"
+    },
+    "soldado-aim": {
+      "file": "soldado-aim.png",
+      "cell": 64,
+      "anims": {
+        "walk_down": {
+          "row": 0,
+          "frames": 4
+        },
+        "walk_up": {
+          "row": 1,
+          "frames": 4
+        },
+        "walk_right": {
+          "row": 2,
+          "frames": 4
+        },
+        "walk_left": {
+          "row": 3,
+          "frames": 4
+        },
+        "attack_down": {
+          "row": 4,
+          "frames": 4
+        },
+        "attack_up": {
+          "row": 5,
+          "frames": 4
+        },
+        "attack_right": {
+          "row": 6,
+          "frames": 2
+        },
+        "attack_left": {
+          "row": 7,
+          "frames": 2
+        }
+      },
+      "source": "Soldado-AIM.jpg"
+    },
+    "mini-ultron": {
+      "file": "mini-ultron.png",
+      "cell": 64,
+      "anims": {
+        "walk_down": {
+          "row": 0,
+          "frames": 4
+        },
+        "walk_up": {
+          "row": 1,
+          "frames": 4
+        },
+        "walk_left": {
+          "row": 2,
+          "frames": 4
+        },
+        "walk_right": {
+          "row": 3,
+          "frames": 4
+        },
+        "attack_down": {
+          "row": 4,
+          "frames": 4
+        },
+        "attack_up": {
+          "row": 5,
+          "frames": 4
+        },
+        "attack_right": {
+          "row": 6,
+          "frames": 3
+        },
+        "attack_left": {
+          "row": 7,
+          "frames": 3
+        }
+      },
+      "source": "Mini-Ultron.jpg"
+    },
+    "juggernaut": {
+      "file": "juggernaut.png",
+      "cell": 96,
+      "anims": {
+        "walk_down": {
+          "row": 0,
+          "frames": 4
+        },
+        "walk_right": {
+          "row": 1,
+          "frames": 4
+        },
+        "idle": {
+          "row": 2,
+          "frames": 1
+        },
+        "charge": {
+          "row": 3,
+          "frames": 3
+        },
+        "slam": {
+          "row": 4,
+          "frames": 1
+        },
+        "attack": {
+          "row": 5,
+          "frames": 2
+        },
+        "stunned": {
+          "row": 6,
+          "frames": 4
+        }
+      },
+      "source": "Juggernaut.png",
+      "facing": "right"
+    },
+    "ultron": {
+      "file": "ultron.png",
+      "cell": 96,
+      "anims": {
+        "walk_right": {
+          "row": 0,
+          "frames": 8
+        },
+        "walk_down": {
+          "row": 1,
+          "frames": 3
+        },
+        "hover": {
+          "row": 2,
+          "frames": 3
+        },
+        "attack": {
+          "row": 3,
+          "frames": 4
+        },
+        "summon": {
+          "row": 4,
+          "frames": 3
+        },
+        "idle": {
+          "row": 5,
+          "frames": 3
+        }
+      },
+      "source": "Ultron.jpg",
+      "facing": "right"
+    },
+    "spider2099": {
+      "file": "spider2099.png",
+      "cell": 64,
+      "anims": {
+        "walk_up": {
+          "row": 0,
+          "frames": 4
+        },
+        "walk_down": {
+          "row": 1,
+          "frames": 4
+        },
+        "attack_up": {
+          "row": 2,
+          "frames": 2
+        },
+        "attack_down": {
+          "row": 3,
+          "frames": 2
+        },
+        "walk_right": {
+          "row": 4,
+          "frames": 6
+        },
+        "attack_right": {
+          "row": 5,
+          "frames": 4
+        },
+        "web": {
+          "row": 6,
+          "frames": 4
+        },
+        "dash": {
+          "row": 7,
+          "frames": 2
+        },
+        "idle": {
+          "row": 8,
+          "frames": 1
+        }
+      },
+      "source": "Spiderman2099-1.png, Spiderman2099-2.png",
+      "facing": "right"
+    },
+    "aim-laser": {
+      "file": "aim-laser.png",
+      "cell": 64,
+      "anims": {
+        "walk_down": {
+          "row": 0,
+          "frames": 4
+        },
+        "walk_up": {
+          "row": 1,
+          "frames": 4
+        },
+        "walk_right": {
+          "row": 2,
+          "frames": 4
+        },
+        "walk_left": {
+          "row": 3,
+          "frames": 4
+        },
+        "attack_right": {
+          "row": 4,
+          "frames": 3
+        }
+      },
+      "source": "AIM.jpg",
+      "facing": "right"
+    },
+    "kamikaze": {
+      "file": "kamikaze.png",
+      "cell": 64,
+      "anims": {
+        "walk_right": {
+          "row": 0,
+          "frames": 4
+        },
+        "walk_up": {
+          "row": 1,
+          "frames": 4
+        },
+        "attack": {
+          "row": 2,
+          "frames": 6
+        }
+      },
+      "source": "Kamikaze.jpg",
+      "facing": "right"
+    },
+    "thug": {
+      "file": "thug.png",
+      "cell": 64,
+      "anims": {
+        "walk_down": {
+          "row": 0,
+          "frames": 4
+        },
+        "walk_up": {
+          "row": 1,
+          "frames": 2
+        },
+        "attack_right": {
+          "row": 2,
+          "frames": 3
+        }
+      },
+      "source": "Ladrones.jpg",
+      "facing": "right"
+    },
+    "thief": {
+      "file": "thief.png",
+      "cell": 64,
+      "anims": {
+        "walk_down": {
+          "row": 0,
+          "frames": 4
+        },
+        "walk_up": {
+          "row": 1,
+          "frames": 3
+        },
+        "attack_right": {
+          "row": 2,
+          "frames": 3
+        }
+      },
+      "source": "Ladrones.jpg",
+      "facing": "right"
+    },
+    "simbionte": {
+      "file": "simbionte.png",
+      "cell": 64,
+      "anims": {
+        "walk_down": {
+          "row": 0,
+          "frames": 5
+        },
+        "walk_up": {
+          "row": 1,
+          "frames": 4
+        },
+        "walk_right": {
+          "row": 2,
+          "frames": 4
+        },
+        "attack_right": {
+          "row": 3,
+          "frames": 3
+        }
+      },
+      "source": "Simbionte.png",
+      "facing": "right"
+    },
+    "ninja": {
+      "file": "ninja.png",
+      "cell": 64,
+      "anims": {
+        "walk_down": {
+          "row": 0,
+          "frames": 4
+        },
+        "walk_up": {
+          "row": 1,
+          "frames": 2
+        },
+        "walk_right": {
+          "row": 2,
+          "frames": 8
+        },
+        "attack_right": {
+          "row": 3,
+          "frames": 4
+        }
+      },
+      "source": "NinjaCibernetico.png",
+      "facing": "right"
+    }
+  },
+  "items": [
+    "AdamantiumClawLeft",
+    "AdamantiumClawRight",
+    "AlienForaPod",
+    "ArcReactorShield",
+    "AsgardianArmor",
+    "AsgardianBlade",
+    "AstralMirror",
+    "BlueSoulSkull",
+    "CloakOfLevitation",
+    "CyclopsVisor",
+    "DarkEnergySword",
+    "DarkholdTome",
+    "DarkSpiritOrb",
+    "EyeOfAgamotto",
+    "GammaGrenade",
+    "Iso8Crystal",
+    "JetBoots",
+    "MechanicalGears",
+    "MiniArcCore",
+    "PlasmaBlaster",
+    "ShieldKeycard",
+    "SpyDrone",
+    "SuperSoldierSerum",
+    "TechScrap",
+    "TeseractCell",
+    "ToxicBarrel",
+    "UtilityBelt",
+    "VoidPotion"
+  ],
+  "fx": {
+    "BlueFire": {
+      "file": "fx/BlueFire.png",
+      "w": 160,
+      "h": 108
+    },
+    "CrimsonSlash": {
+      "file": "fx/CrimsonSlash.png",
+      "w": 160,
+      "h": 101
+    },
+    "ExplosionBoom": {
+      "file": "fx/ExplosionBoom.png",
+      "w": 160,
+      "h": 109
+    },
+    "GhostRiderAtack": {
+      "file": "fx/GhostRiderAtack.png",
+      "w": 160,
+      "h": 97
+    },
+    "GhostRiderDash": {
+      "file": "fx/GhostRiderDash.png",
+      "w": 160,
+      "h": 90
+    },
+    "HulkSmashCrack": {
+      "file": "fx/HulkSmashCrack.png",
+      "w": 160,
+      "h": 102
+    },
+    "IronManBlast": {
+      "file": "fx/IronManBlast.png",
+      "w": 160,
+      "h": 106
+    },
+    "IronManUniBeam": {
+      "file": "fx/IronManUniBeam.png",
+      "w": 160,
+      "h": 68
+    },
+    "JuggernautRocks": {
+      "file": "fx/JuggernautRocks.png",
+      "w": 160,
+      "h": 97
+    },
+    "MagnetoAtack": {
+      "file": "fx/MagnetoAtack.png",
+      "w": 160,
+      "h": 114
+    },
+    "OrangeFire": {
+      "file": "fx/OrangeFire.png",
+      "w": 160,
+      "h": 119
+    },
+    "SonicPulse": {
+      "file": "fx/SonicPulse.png",
+      "w": 160,
+      "h": 109
+    },
+    "StrangeAtack": {
+      "file": "fx/StrangeAtack.png",
+      "w": 160,
+      "h": 88
+    },
+    "StrangeUlti": {
+      "file": "fx/StrangeUlti.png",
+      "w": 160,
+      "h": 115
+    },
+    "TargetCrosshair": {
+      "file": "fx/TargetCrosshair.png",
+      "w": 160,
+      "h": 119
+    },
+    "VoidPortal": {
+      "file": "fx/VoidPortal.png",
+      "w": 160,
+      "h": 115
+    }
+  },
+  "stages": {
+    "aim": {
+      "file": "stage/aim.jpg",
+      "w": 640,
+      "h": 349
+    },
+    "cosmic": {
+      "file": "stage/cosmic.jpg",
+      "w": 640,
+      "h": 349
+    },
+    "futurist": {
+      "file": "stage/futurist.jpg",
+      "w": 640,
+      "h": 363
+    },
+    "magic": {
+      "file": "stage/magic.jpg",
+      "w": 640,
+      "h": 542
+    }
+  },
+  "chests": {
+    "file": "chests.png",
+    "cell": 64,
+    "frames": [
+      "tech_closed",
+      "tech_open",
+      "gold_closed",
+      "gold_open",
+      "cosmic_closed",
+      "cosmic_open"
+    ]
+  },
+  "ui": {
+    "hp_frame": {
+      "inner": [
+        144,
+        103,
+        802,
+        69
+      ],
+      "file": "ui/hp_frame.png",
+      "w": 993,
+      "h": 275
+    },
+    "shield_frame": {
+      "inner": [
+        150,
+        69,
+        591,
+        58
+      ],
+      "file": "ui/shield_frame.png",
+      "w": 781,
+      "h": 190
+    },
+    "slot": {
+      "file": "ui/slot.png",
+      "w": 362,
+      "h": 367
+    },
+    "slot_rare": {
+      "file": "ui/slot_rare.png",
+      "w": 362,
+      "h": 367
+    },
+    "slot_epic": {
+      "file": "ui/slot_epic.png",
+      "w": 362,
+      "h": 367
+    },
+    "iso": {
+      "file": "ui/iso.png",
+      "w": 297,
+      "h": 350
+    }
+  }
+}

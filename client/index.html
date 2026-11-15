@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Marvel RogueLike</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- Pantalla de entrada -->
+  <section id="join" class="screen">
+    <div class="panel join-panel">
+      <h1>MARVEL <span>ROGUELIKE</span></h1>
+      <p class="sub">Cooperativo · 1 a 4 jugadores</p>
+      <label>Nombre de héroe <input id="in-name" maxlength="16" autocomplete="off"></label>
+      <label>Código de sala <input id="in-room" maxlength="8" placeholder="MARVEL" autocomplete="off"></label>
+      <button id="btn-join" class="primary">Entrar</button>
+      <p id="join-error" class="error"></p>
+      <div class="controls">
+        <b>Controles</b>
+        <span><kbd>WASD</kbd> moverse</span>
+        <span><kbd>Click</kbd> atacar (mantener)</span>
+        <span><kbd>Espacio</kbd> dash</span>
+        <span><kbd>Shift</kbd> / <kbd>Click der.</kbd> habilidad</span>
+        <span><kbd>Q</kbd> ulti</span>
+        <span><kbd>F</kbd> (mantener 10 s) reanimar a un aliado caído</span>
+        <span><kbd>M</kbd> silenciar el sonido</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Lobby -->
+  <section id="lobby" class="screen hidden">
+    <header class="lobby-head">
+      <div><h2>Sala <span id="lb-code"></span></h2><small id="lb-phase"></small></div>
+      <div class="iso"><span class="iso-gem"></span><b id="lb-iso">0</b> Iso-8</div>
+    </header>
+    <div class="lobby-cols">
+      <section class="panel">
+        <h3>Héroes</h3>
+        <div id="char-grid" class="char-grid"></div>
+        <div id="char-detail" class="char-detail"></div>
+      </section>
+      <section class="panel">
+        <h3>Equipo</h3>
+        <ul id="team-list" class="team-list"></ul>
+        <button id="btn-ready" class="primary big">¡Listo!</button>
+        <p class="hint">La run empieza cuando todos están listos.</p>
+        <div id="profile-stats" class="profile-stats"></div>
+      </section>
+      <section class="panel">
+        <h3>Tienda de mejoras permanentes</h3>
+        <p class="hint">Gasta los fragmentos Iso-8 que ganas al terminar cada run.</p>
+        <div id="shop-list" class="shop-list"></div>
+      </section>
+    </div>
+  </section>
+
+  <!-- Fin de la run -->
+  <section id="end" class="screen hidden">
+    <div class="panel end-panel">
+      <h1 id="end-title"></h1>
+      <p id="end-sub" class="sub"></p>
+      <div id="end-gems" class="end-gems"></div>
+      <table id="end-table"></table>
+      <button id="btn-back" class="primary">Volver al lobby</button>
+    </div>
+  </section>
+
+  <div id="toasts"></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

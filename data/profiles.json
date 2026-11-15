@@ -1,0 +1,34 @@
+{
+  "juanjo": {
+    "name": "Juanjo",
+    "iso8": 203,
+    "upgrades": {
+      "hp": 1,
+      "dmg": 2,
+      "speed": 0,
+      "rare": 0
+    },
+    "unlocked": {},
+    "stats": {
+      "runs": 8,
+      "wins": 0,
+      "bestFloor": 1
+    }
+  },
+  "jose": {
+    "name": "jose",
+    "iso8": 0,
+    "upgrades": {
+      "hp": 0,
+      "dmg": 0,
+      "speed": 0,
+      "rare": 0
+    },
+    "unlocked": {},
+    "stats": {
+      "runs": 0,
+      "wins": 0,
+      "bestFloor": 0
+    }
+  }
+}

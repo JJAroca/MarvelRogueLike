@@ -1,0 +1,14 @@
+{
+  "name": "marvel-roguelike",
+  "version": "1.0.0",
+  "description": "Roguelike cooperativo multijugador (fan game) — servidor autoritativo Node.js + cliente Canvas",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}
