@@ -26,6 +26,7 @@ export const ENEMY_SPRITES = {
   juggernaut: 'juggernaut',
   ultron: 'ultron',
   shooter: 'soldado-aim',
+  goblin: 'goblin',
   aimlaser: 'aim-laser',
   miniultron: 'mini-ultron',
   grunt: 'thug',
@@ -53,6 +54,7 @@ export class Sprites {
     this.stages = {};   // bioma → Image
     this.ui = {};       // pieza del HUD → Image
     this.chests = null;
+    this.gems = {};     // Gema del Infinito → Image (sprites/items/Gemas.jpg)
     this.onload = null;
     fetch(base + 'manifest.json')
       .then((r) => (r.ok ? r.json() : null))
@@ -72,6 +74,7 @@ export class Sprites {
         for (const [k, v] of Object.entries(m.fx || {})) load(this.fx, k, v.file);
         for (const [k, v] of Object.entries(m.stages || {})) load(this.stages, k, v.file);
         for (const [k, v] of Object.entries(m.ui || {})) load(this.ui, k, v.file);
+        for (const [k, v] of Object.entries(m.gems || {})) load(this.gems, k, v);
         if (m.chests) { const im = new Image(); im.onload = () => { this.chests = im; }; im.src = base + m.chests.file; }
       })
       .catch(() => { /* sin sprites: se usa el respaldo geométrico */ });

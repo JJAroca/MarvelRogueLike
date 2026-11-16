@@ -22,6 +22,7 @@ class WSConn extends EventEmitter {
   get buffered() { return this.socket.writableLength; }
 
   _onData(chunk) {
+    this.alive = true;
     this.buf = this.buf.length ? Buffer.concat([this.buf, chunk]) : chunk;
     while (this.open) {
       if (this.buf.length < 2) return;
@@ -51,7 +52,7 @@ class WSConn extends EventEmitter {
 
       if (op === 0x8) { this.close(); return; }
       if (op === 0x9) { this._frame(0xA, payload); continue; }
-      if (op === 0xA) continue;
+      if (op === 0xA) { this.alive = true; continue; }
       if (op === 0x0 || op === 0x1 || op === 0x2) {
         this.frags.push(payload);
         if (fin) {
@@ -90,6 +91,17 @@ class WSConn extends EventEmitter {
   }
 }
 
+// Ping cada 25 s: evita que proxies como el de Fly.io corten conexiones inactivas (lobby)
+// y detecta clientes muertos que no responden.
+const conns = new Set();
+setInterval(() => {
+  for (const c of conns) {
+    if (c.alive === false) { c.close(); continue; }
+    c.alive = false;
+    c._frame(0x9, Buffer.alloc(0));
+  }
+}, 25000).unref();
+
 function attach(server, onConnection) {
   server.on('upgrade', (req, socket) => {
     const key = req.headers['sec-websocket-key'];
@@ -103,7 +115,10 @@ function attach(server, onConnection) {
       'Upgrade: websocket\r\nConnection: Upgrade\r\n' +
       'Sec-WebSocket-Accept: ' + accept + '\r\n\r\n'
     );
-    onConnection(new WSConn(socket), req);
+    const conn = new WSConn(socket);
+    conns.add(conn);
+    conn.on('close', () => conns.delete(conn));
+    onConnection(conn, req);
   });
 }
 

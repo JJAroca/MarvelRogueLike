@@ -3,12 +3,15 @@
 import { UI } from './ui.js';
 import { Renderer } from './render.js';
 import { Sprites } from './sprites.js';
-import { AudioFx } from './audio.js';
+import { AudioManager } from './audioManager.js';
 
 export const S = {
   sprites: new Sprites(),
-  audio: new AudioFx(),
+  audio: new AudioManager(),
   got: null,          // último ítem recogido (aviso con icono en el HUD)
+  map: null,          // minimapa del piso (mensaje 'map' del servidor)
+  selSlot: null,      // ranura del inventario seleccionada (para soltar con G)
+  synergies: [],
   me: 0, code: '', phase: 'join',
   chars: {}, charList: [], items: {}, gems: {}, gemOrder: [], bosses: {}, enemies: {},
   profile: null, shop: [], lobby: null, selected: 'ironman',
@@ -39,8 +42,10 @@ function handle(m) {
   switch (m.t) {
     case 'welcome':
       S.me = m.id; S.code = m.code;
+      S.curses = m.curses || {};
       S.charList = m.chars; S.chars = Object.fromEntries(m.chars.map((c) => [c.id, c]));
       S.items = m.items; S.gems = m.gems; S.gemOrder = m.gemOrder; S.bosses = m.bosses; S.enemies = m.enemies;
+      S.synergies = m.synergies || [];
       S.profile = m.profile; S.shop = m.shop;
       S.phase = 'lobby';
       ui.showLobby();
@@ -49,11 +54,13 @@ function handle(m) {
     case 'lobby': S.lobby = m; ui.renderLobby(); break;
     case 'profile': S.profile = m.profile; S.shop = m.shop; ui.renderLobby(); break;
     case 'start':
-      S.phase = 'run'; S.inv = []; S.snap = null; S.prevPos.clear(); S.curPos.clear();
+      S.phase = 'run'; S.inv = []; S.snap = null; S.prevPos.clear(); S.curPos.clear(); S.map = null; S.selSlot = null;
+      net.rs = null; net.D = []; net.p.clear();
       ui.showGame();
       break;
     case 's': onSnap(m); break;
-    case 'inv': S.inv = m.items; break;
+    case 'inv': S.inv = m.items; if (S.selSlot != null && S.selSlot >= S.inv.length) S.selSlot = null; break;
+    case 'map': S.map = m; break;
     case 'got': S.got = { id: m.id, t: performance.now() }; break;
     case 'toast': ui.toast(m.text, m.c); break;
     case 'unlock':
@@ -68,7 +75,26 @@ function handle(m) {
   }
 }
 
+// El servidor solo manda la parte estática (sala, portales, gemas, datos fijos de jugadores)
+// cuando cambia: aquí se completa cada snapshot con lo último recibido.
+const net = { rs: null, D: [], meta: { gems: [], bs: [], sy: [], gt: 0 }, p: new Map() };
+function expandSnap(m) {
+  if (m.rs) net.rs = m.rs;
+  if (m.D) net.D = m.D;
+  if (m.meta) net.meta = m.meta;
+  m.room = Object.assign({}, net.rs, m.room);
+  m.D = net.D;
+  m.gems = net.meta.gems; m.bs = net.meta.bs; m.sy = net.meta.sy; m.gt = net.meta.gt;
+  for (let i = 0; i < m.P.length; i++) {
+    const p = Object.assign({}, net.p.get(m.P[i].i), m.P[i]);
+    net.p.set(p.i, p);
+    m.P[i] = p;
+  }
+  return m;
+}
+
 function onSnap(m) {
+  expandSnap(m);
   const now = performance.now();
   if (S.snapT) S.snapDt = Math.min(80, Math.max(16, now - S.snapT));
   S.snapT = now;
@@ -100,23 +126,43 @@ let mouseDown = false;
 const KEYMAP = { KeyW: 1, ArrowUp: 1, KeyS: 2, ArrowDown: 2, KeyA: 4, ArrowLeft: 4, KeyD: 8, ArrowRight: 8, KeyF: 32 };
 
 addEventListener('keydown', (e) => {
-  if (e.code === 'KeyM' && !(e.target instanceof HTMLInputElement)) ui.toast(S.audio.toggleMute() ? 'Sonido desactivado [M]' : 'Sonido activado [M]', '#cfd8ff', 1500);
+  if (e.code === 'KeyM' && !(e.target instanceof HTMLInputElement && e.target.type === 'text')) ui.toast(S.audio.toggleMute() ? 'Sonido desactivado [M]' : 'Sonido activado [M]', '#cfd8ff', 1500);
   if (S.phase !== 'run') return;
   if (e.repeat) { if (KEYMAP[e.code] || e.code === 'Space') e.preventDefault(); return; }
   keys.add(e.code);
   if (e.code === 'Space') { edges.d = 1; e.preventDefault(); }
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') edges.s = 1;
   if (e.code === 'KeyQ') edges.q = 1;
+  if (e.code === 'KeyG') dropItem(S.selSlot);
   if (KEYMAP[e.code]) e.preventDefault();
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
 addEventListener('blur', () => { keys.clear(); mouseDown = false; });
 const canvas = document.getElementById('game');
 canvas.addEventListener('mousemove', (e) => { S.mouse.x = e.clientX; S.mouse.y = e.clientY; });
+// Soltar ítem: [G] (seleccionado o el último recogido), Shift+clic o clic central en la ranura.
+function dropItem(slot) {
+  send({ t: 'drop', slot: Number.isInteger(slot) ? slot : null });
+  S.selSlot = null;
+}
 canvas.addEventListener('mousedown', (e) => {
+  const hit = S.phase === 'run' && renderer.ui.hitTest(e.clientX, e.clientY);
+  if (hit && e.button !== 2) {
+    if (hit.type === 'mute') ui.toast(S.audio.toggleMute() ? 'Sonido desactivado' : 'Sonido activado', '#cfd8ff', 1500);
+    else if (hit.type === 'settings') openSettings(true);
+    else if (hit.type === 'slot' && S.inv[hit.i]) {
+      if (e.button === 1 || (e.button === 0 && e.shiftKey)) dropItem(hit.i);
+      else if (e.button === 0) S.selSlot = S.selSlot === hit.i ? null : hit.i;
+      S.audio.play('click');
+    }
+    e.preventDefault();
+    return;   // los clics en el HUD no disparan
+  }
+  if (e.button === 1) e.preventDefault();   // sin autodesplazamiento
   if (e.button === 0) mouseDown = true;
   if (e.button === 2) edges.s = 1;
 });
+canvas.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
 addEventListener('mouseup', (e) => { if (e.button === 0) mouseDown = false; });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
@@ -131,6 +177,27 @@ setInterval(() => {
   send({ t: 'in', k, ax: Math.round(ax), ay: Math.round(ay), d: edges.d, s: edges.s, q: edges.q });
   edges.d = edges.s = edges.q = 0;
 }, 33);
+
+// ───────── Configuración de audio ─────────
+const $id = (i) => document.getElementById(i);
+function openSettings(open = true) {
+  $id('settings').classList.toggle('hidden', !open);
+  if (!open) return;
+  S.audio.init();
+  for (const k of ['music', 'sfx', 'voice']) { $id(`vol-${k}`).value = Math.round(S.audio.vol[k] * 100); $id(`out-${k}`).textContent = $id(`vol-${k}`).value; }
+  $id('vol-mute').checked = S.audio.isMuted;
+  $id('track-name').textContent = S.audio.trackName;
+}
+S.openSettings = openSettings;
+for (const k of ['music', 'sfx', 'voice']) {
+  $id(`vol-${k}`).addEventListener('input', (e) => { S.audio.setVolume(k, e.target.value / 100); $id(`out-${k}`).textContent = e.target.value; if (k !== 'music') S.audio.play('click'); });
+}
+$id('vol-mute').addEventListener('change', (e) => { if (e.target.checked !== S.audio.isMuted) S.audio.toggleMute(); });
+$id('btn-track').addEventListener('click', () => S.audio.nextTrack());
+$id('btn-settings-close').addEventListener('click', () => openSettings(false));
+document.querySelectorAll('.btn-settings').forEach((b) => b.addEventListener('click', () => openSettings(true)));
+S.audio.onTrack = (n) => { $id('track-name').textContent = n; };
+addEventListener('keydown', (e) => { if (e.code === 'Escape' && !$id('settings').classList.contains('hidden')) openSettings(false); });
 
 // ───────── Arranque ─────────
 const nameIn = document.getElementById('in-name');
@@ -150,7 +217,15 @@ document.getElementById('btn-join').addEventListener('click', doJoin);
 for (const el of [nameIn, roomIn]) el.addEventListener('keydown', (e) => { if (e.key === 'Enter') doJoin(); });
 nameIn.focus();
 
+function musicKey() {
+  if (S.phase !== 'run' || !S.snap) return S.phase === 'join' ? null : 'menu';
+  const r = S.snap.room;
+  if (S.snap.boss && S.snap.E.some((e) => e[0] === S.snap.boss)) return 'boss';
+  return r.bg || 'menu';
+}
+
 function frame() {
+  S.audio.setMusic(musicKey());
   if (S.phase === 'run' || S.phase === 'end') renderer.draw();
   requestAnimationFrame(frame);
 }

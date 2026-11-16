@@ -1,26 +1,11 @@
 'use strict';
 // ══════════ EXPANSIÓN: personajes desbloqueables ══════════
-// Héroes clásicos (antes iniciales) + 5 ocultos. Se desbloquean de forma permanente
+// Héroes clásicos (antes iniciales) + ocultos. Spider-Man clásico se retiró del roster:
+// su lugar lo ocupa Spider-Man 2099 (sprites reales y efectos 8-bit). Se desbloquean de forma permanente
 // en el perfil (ver server/unlocks.js).
 const TAU = Math.PI * 2;
 
 module.exports = {
-  // ── Spider-Man (clásico) ──
-  spiderman: {
-    id: 'spiderman', hidden: true, name: 'Spider-Man', color: '#d42a2a', color2: '#2a4ad4', letter: 'S',
-    hp: 100, speed: 235, crit: 0.08, attackRate: 0.2, abilityCd: 5, ultCd: 22,
-    desc: 'Ágil y versátil. Dispara telarañas a distancia que ralentizan.',
-    kit: { attack: 'Disparo de telaraña (ralentiza)', ability: 'Red de impacto: inmoviliza en área', ult: 'Torbellino arácnido (empuja y daña alrededor)', passive: 'Sentido arácnido: +8% crítico' },
-    unlockHint: 'Derrota a Magneto o a Juggernaut (jefes aleatorios de los pisos 1–2).',
-    attack(w, p) { w.shoot(p, { speed: 720, r: 5, dmg: 9, kind: 'web', life: 0.8, o: { slow: 0.6 } }); },
-    ability(w, p) { w.shoot(p, { speed: 520, r: 10, dmg: 14, kind: 'webball', life: 0.9, explodeR: 90, o: { freeze: 1.4 } }); },
-    ult(w, p) {
-      w.fx.push({ k: 'ring', x: p.x, y: p.y, r: 210, c: '#ff5050' });
-      w.aoeEnemies(p, p.x, p.y, 210, 48, { kb: 260, slow: 2 });
-    },
-  },
-
-  // ── Capitán América ──
   cap: {
     id: 'cap', hidden: true, name: 'Capitán América', color: '#2a4ad4', color2: '#e8e8f0', letter: 'C',
     hp: 140, speed: 218, crit: 0.05, attackRate: 0.38, abilityCd: 3.5, ultCd: 25,
@@ -46,7 +31,7 @@ module.exports = {
     hp: 130, speed: 208, crit: 0.05, attackRate: 0.5, abilityCd: 6, ultCd: 26,
     desc: 'Dios del Trueno. Martillazos devastadores y rayos encadenados.',
     kit: { attack: 'Golpe de Mjolnir', ability: 'Rayo en cadena (5 objetivos)', ult: 'Tormenta divina: 14 rayos sobre los enemigos', passive: 'Digno: golpes que empujan' },
-    unlockHint: 'Derrota a Dormammu (jefe del piso 3).',
+    unlockHint: 'Derrota a una pareja de jefes dobles (pisos 3 y 4).',
     attack(w, p) { w.meleeArc(p, 84, 1.7, 22, { kb: 160 }, '#9fd0ff'); },
     ability(w, p) {
       let from = p;
@@ -156,7 +141,7 @@ module.exports = {
       ult: 'Red criogénica: 16 telarañas que congelan 3 s',
       passive: 'Dispositivo Temporal: te revive automáticamente 1 vez por partida',
     },
-    unlockHint: 'Limpia un piso completo en menos de 2 minutos sin recibir daño.',
+    unlockHint: 'Derrota a Magneto o a Juggernaut, o limpia un piso en menos de 2 minutos sin recibir daño.',
     attack(w, p) { w.meleeArc(p, 72, 1.6, 13, { bleed: true, bleedDps: 6 }, '#ff3a6a'); },
     ability(w, p) { w.startDash(p, { mult: 3.8, dur: 0.3, noCd: true }); },
     ult(w, p) {
@@ -231,7 +216,7 @@ module.exports = {
       ult: 'Rey de las Mentiras: 3 clones que atraen enemigos y explotan',
       passive: 'Suerte aumentada en cofres (+15% rareza y +1 ítem). El dash deja un clon explosivo',
     },
-    unlockHint: 'Encuentra la Sala Secreta del Engaño (una ilusión oculta en algún piso) y derrota a Loki.',
+    unlockHint: 'Encuentra la Sala Secreta (una ilusión oculta en algún piso) y supera su desafío.',
     attack(w, p) {
       for (let i = -1; i <= 1; i++) w.shoot(p, { angle: p.aim + i * 0.18, speed: 750, r: 5, dmg: 8, kind: 'dagger', life: 0.7 });
     },

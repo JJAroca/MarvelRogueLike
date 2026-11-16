@@ -9,8 +9,10 @@ const { CHARS } = require('./characters');
 const { ENEMIES, updateEnemy } = require('./enemies');
 const { BOSSES } = require('./bosses');
 const { ITEMS, rollItem, shortEffect } = require('./items');
-const { GEMS, VAULT_GEMS } = require('./gems');
-const { genFloor, branchSpec, rollBossPlan } = require('./floors');
+const { GEMS, GEM_ORDER } = require('./gems');
+const { genFloor, branchSpec, rollBossPlan, neighbors } = require('./floors');
+const curses = require('./curses');
+const { BY_ID: SYN, activeSynergies } = require('./synergies');
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -23,9 +25,22 @@ const RARITY_COLOR = { common: '#cfd6e0', rare: '#4fa8ff', epic: '#c06bff', lege
 const CHAOS_LABEL = { burn: 'Quemadura', freeze: 'Congelado', slow: 'Lentitud', poison: 'Veneno', confuse: 'Confusión', weaken: 'Debilidad' };
 const STATUS_BITS = { freeze: 1, burn: 2, bleed: 4, poison: 8, confuse: 16, slow: 32, weaken: 64 };
 const DASH_CD = 1.2;
+// Vida de los jefes según jugadores (1P 100% · 2P 155% · 3P 200% · 4P 240%).
+const BOSS_HP_SCALE = [1, 1, 1.55, 2.0, 2.4];
+const DOUBLE_BOSS_HP = 0.75;   // cada jefe de una pareja tiene el 75% de su vida base
+const GOBLIN_CHANCE = 0.3;
+// Red: los datos casi estáticos (sala, portales, gemas, sinergias, datos fijos de cada jugador)
+// solo se envían cuando cambian, y completos cada KEYFRAME snapshots (1 s) por si se perdió alguno.
+const KEYFRAME = 30;
+const P_STATIC = ['n', 'c', 'r', 'fm', 'mh', 'sm', 'au', 'cm'];     // prob. de que un Goblin Saqueador acompañe la 1ª oleada (1 por piso)
 const SHIELD_DELAY = 4;     // s sin recibir daño antes de recargar el escudo
 const SHIELD_REGEN = 0.12;  // fracción del escudo máximo por segundo
 const GRENADE_CD = 5;       // Granada Gamma
+const MAX_ITEMS = 6;        // inventario activo (hotbar de 6 ranuras)
+const HURT_IFRAMES = 0.45;  // invulnerabilidad tras recibir un golpe (el cliente parpadea)
+const DROP_LOCK = 1.2;      // quien suelta un ítem no puede recogerlo de nuevo durante este tiempo
+// Sprites de output_effects para los tajos cuerpo a cuerpo de cada héroe.
+const SLASH_SPRITE = { ghostrider: 'GhostRiderAtack', wolverine: 'CrimsonSlash', spider2099: 'CrimsonSlash', venom: 'CrimsonSlash' };
 const DRONE_CD = 0.8;       // Dron Espía
 const REVIVE_TIME = 10;     // segundos manteniendo [F] para reanimar
 const REVIVE_RANGE = 75;
@@ -50,10 +65,18 @@ class World {
     this.bossId = 0;
     this.over = false;
     this.result = null;
-    this.stats = { roomsCleared: 0, bosses: 0, kills: 0, secretFound: false, secretBoss: false, galactus: false };
+    this.stats = { roomsCleared: 0, bosses: 0, kills: 0, secretFound: false, secretBoss: false, doubleBosses: 0 };
     this.secretFloor = 1 + Math.floor(Math.random() * 3); // la Sala Secreta aparece en el piso 1, 2 o 3
-    this.bossPlan = rollBossPlan();   // jefes aleatorios de los pisos 1 y 2 (fijan el bioma)
+    this.bossPlan = rollBossPlan();   // jefes de cada piso (1 · 1 · 2 · 2), fijan el bioma
+    this.bossIds = [];
+    this.curse = null;                // Sobrecarga Cósmica activa
+    this.gauntlet = false;            // Poder del Guantelete (6 gemas)
+    this.roomState = new Map();       // salas ya despejadas (para volver a ellas)
+    this.goblinChase = null;          // { room, itemId } Goblin huido a otra sala
+    this.synergies = [];
+    this.visited = new Set();
     for (const m of members) this.addPlayer(m);
+    this.computeSynergies();
     this.loadFloor(1);
   }
 
@@ -79,17 +102,68 @@ class World {
     p.hp = p.maxHp;
   }
 
+  // Desconexión: se limpia todo lo que pertenece al jugador y sus ítems quedan en el suelo
+  // para que el resto del equipo pueda recogerlos. La sala sigue funcionando.
   removePlayer(id) {
+    const p = this.players.get(id);
+    if (!p) return;
     this.players.delete(id);
-    if (this.players.size === 0) { this.over = true; this.result = null; }
+    if (this.players.size === 0) { this.over = true; this.result = null; return; }
+    if (this.cur && !this.over) {
+      p.items.forEach((itemId, i) => {
+        const a = (i / Math.max(1, p.items.length)) * TAU;
+        const it = ITEMS[itemId];
+        this.spawnPickup('item', clamp(p.x + Math.cos(a) * 46, 30, this.cur.w - 30), clamp(p.y + Math.sin(a) * 46, 30, this.cur.h - 30), { itemId, rarity: it ? it.rarity : 'common' });
+      });
+    }
+    this.projs = this.projs.filter((q) => !(q.side === 'p' && q.ownerId === id));
+    this.decoys = this.decoys.filter((d) => d.ownerId !== id);
+    this.hazards = this.hazards.filter((h) => h.ownerId !== id && h.targetId !== id);
+    if (this.transition && this.transition.door) this.transition.door.count = 0;
+    this.computeSynergies();
+  }
+
+  // Sinergias cooperativas (ver synergies.js): se aplican a todo el equipo en recalc().
+  computeSynergies() {
+    const ids = activeSynergies([...this.players.values()].map((p) => p.charId));
+    const added = ids.filter((s) => !this.synergies.includes(s));
+    const changed = added.length || ids.length !== this.synergies.length;
+    this.synergies = ids;
+    if (!changed) return;
+    for (const p of this.players.values()) {
+      this.recalc(p);
+      if (added.some((s) => SYN[s].shieldOnEnter)) p.shield = p.shieldMax;
+    }
+    for (const s of added) {
+      const S = SYN[s];
+      this.toast(`🤝 Sinergia «${S.name}»: ${S.desc}`, S.color);
+    }
+  }
+
+  // [G] / Shift+clic / clic central: soltar un ítem (el seleccionado o el último recogido).
+  dropItem(p, slot) {
+    if (!p || p.downed || this.over || this.transition || !this.cur) return false;
+    if (this.time < (p.dropCd || 0) || !p.items.length) return false;
+    let i = Number.isInteger(slot) && slot >= 0 && slot < p.items.length ? slot : p.items.lastIndexOf(p.lastPick);
+    if (i < 0) i = p.items.length - 1;
+    const id = p.items.splice(i, 1)[0];
+    p.dropCd = this.time + 0.25;
+    this.recalc(p);
+    const it = ITEMS[id] || { rarity: 'common', name: id };
+    const x = clamp(p.x + Math.cos(p.aim) * 44, 30, this.cur.w - 30), y = clamp(p.y + Math.sin(p.aim) * 44, 30, this.cur.h - 30);
+    this.spawnPickup('item', x, y, { itemId: id, rarity: it.rarity, lockId: p.id, lockT: this.time + DROP_LOCK });
+    this.fxText(p.x, p.y - 46, `Soltado: ${it.name}`, '#cfd6e0');
+    this.fx.push({ k: 'sfx', s: 'drop', x: ri(p.x), y: ri(p.y) });
+    p.client.conn.send(JSON.stringify({ t: 'inv', items: p.items }));
+    return true;
   }
 
   onInput(id, m) {
     const p = this.players.get(id);
     if (!p) return;
-    p.input.k = m.k | 0;
-    if (Number.isFinite(m.ax)) p.input.ax = m.ax;
-    if (Number.isFinite(m.ay)) p.input.ay = m.ay;
+    p.input.k = (m.k | 0) & 63;
+    if (Number.isFinite(m.ax)) p.input.ax = clamp(m.ax, -4000, 6000);
+    if (Number.isFinite(m.ay)) p.input.ay = clamp(m.ay, -4000, 6000);
     p.input.atk = (p.input.k & 16) !== 0;
     p.input.revive = (p.input.k & 32) !== 0;   // [F] mantenido
     if (m.d) p.pending.dash = 1;
@@ -112,6 +186,13 @@ class World {
       if (it.poison) poison += it.poison;
       if (it.aura && !auras.includes(it.aura)) auras.push(it.aura);
     }
+    let burnOnHit = false;
+    for (const sid of this.synergies || []) {
+      const S = SYN[sid];
+      for (const k in S.mods) m[k] = (m[k] || 0) + S.mods[k];
+      if (S.burn) burnOnHit = true;
+    }
+    p.burnOnHit = burnOnHit;
     p.auras = auras.slice(-3);
     p.poisonChance = Math.min(0.6, poison);
     p.meleeMult = 1 + m.melee;
@@ -121,6 +202,8 @@ class World {
     if (this.gems.has('tiempo')) m.cd += 0.25;
     if (this.gems.has('realidad')) m.crit += 0.1;
     if (this.gems.has('alma')) m.lifesteal += 0.05;
+    // Poder del Guantelete (6 gemas): buff masivo para todo el equipo.
+    if (this.gauntlet) { m.dmg += 0.5; m.speed += 0.15; m.cd += 0.25; m.armor += 0.1; m.regen += 0.01; }
 
     const ratio = p.maxHp > 0 ? p.hp / p.maxHp : 1;
     p.maxHp = Math.round(def.hp * up.hp * Math.max(0.3, 1 + m.hp));
@@ -215,7 +298,7 @@ class World {
       p.x += p.dashVx * dt;
       p.y += p.dashVy * dt;
     } else if (!frozen) {
-      const sp = p.speed * (p.st.slow > 0 ? 0.55 : 1) * (p.astral ? ASTRAL_SPEED : 1);
+      const sp = p.speed * (p.st.slow > 0 ? 0.55 : 1) * (p.astral ? ASTRAL_SPEED : 1) * curses.playerSpeed(this);
       p.x += mx * sp * dt;
       p.y += my * sp * dt;
       if (this.pull) {
@@ -239,7 +322,7 @@ class World {
       if (ok) {
         p.cd.ab = p.def.abilityCd * (p.def.fixedAbilityCd ? 1 : p.cdMult);
         p.atkT = 0.35;
-        if (p.charId === 'spider2099') this.fx.push({ k: 'sfx', s: 'chip_ab', x: ri(p.x), y: ri(p.y) });
+        this.fx.push({ k: 'sfx', s: p.charId === 'spider2099' ? 'chip_ab' : 'ab', c: p.charId, x: ri(p.x), y: ri(p.y) });
       }
     }
     if (p.pending.ult) {
@@ -250,7 +333,7 @@ class World {
       if (ok) {
         p.cd.ult = p.def.ultCd * p.cdMult;
         p.atkT = 0.45;
-        if (p.charId === 'spider2099') this.fx.push({ k: 'sfx', s: 'chip_ult', x: ri(p.x), y: ri(p.y) });
+        this.fx.push({ k: 'sfx', s: p.charId === 'spider2099' ? 'chip_ult' : 'ult', c: p.charId, x: ri(p.x), y: ri(p.y) });
       }
     }
     if (inp.atk && p.cd.atk <= 0 && p.dashT <= 0) {
@@ -294,7 +377,7 @@ class World {
     p.dashVx = Math.cos(a) * sp;
     p.dashVy = Math.sin(a) * sp;
     p.invulnT = Math.max(p.invulnT, dur + 0.06);
-    this.fx.push({ k: 'dash', x: ri(p.x), y: ri(p.y), a: r2(a), c: p.def.color2 || p.def.color });
+    this.fx.push({ k: 'dash', x: ri(p.x), y: ri(p.y), a: r2(a), c: p.def.color2 || p.def.color, s: p.charId === 'ghostrider' ? 'GhostRiderDash' : undefined });
     if (p.charId === 'spider2099') this.fx.push({ k: 'sfx', s: 'chip_dash', x: ri(p.x), y: ri(p.y) });
     if (!noCd) {
       p.cd.dash = DASH_CD * p.dashCdMult;
@@ -305,7 +388,9 @@ class World {
   hurtPlayer(p, dmg, o = {}) {
     if (p.downed || p.astral || this.over) return 0;   // la Forma Astral es intangible
     if (!o.dot && (p.invulnT > 0 || p.dashT > 0)) return 0;
-    dmg *= (1 - p.armor) * (p.buffs.avengers > 0 ? 0.75 : 1);
+    // trueDmg (explosión kamikaze): % de la vida máxima sin reducir por armadura.
+    if (!o.trueDmg) dmg *= (1 - p.armor) * (p.buffs.avengers > 0 ? 0.75 : 1);
+    if (!o.dot) dmg *= curses.dmgMult(this);
     if (dmg <= 0) return 0;
     p.sinceHit = 0;
     if (o.stun && !(p.stunT > 0)) {
@@ -321,6 +406,11 @@ class World {
       if (dmg <= 0) return ab;
     }
     p.hp -= dmg;
+    if (!o.dot && !o.hz) {
+      p.invulnT = Math.max(p.invulnT, HURT_IFRAMES);          // i-frames (parpadeo en el cliente)
+      if (dmg >= p.maxHp * 0.12) this.fx.push({ k: 'shake', s: 7, p: p.id });
+      if (this.time > (p.hurtSfxT || 0)) { p.hurtSfxT = this.time + 1.4; this.fx.push({ k: 'sfx', s: 'hurt', c: p.charId, x: ri(p.x), y: ri(p.y) }); }
+    }
     p.run.damageTaken += dmg;
     p.run.floorHit = true;
     if (!o.dot && !o.hz) this.fx.push({ k: 'num', x: ri(p.x), y: ri(p.y - 22), v: Math.max(1, ri(dmg)), c: '#ff5a5a' });
@@ -335,6 +425,7 @@ class World {
         p.dashT = 0;
         p.run.deaths++;
         this.fxText(p.x, p.y - 30, '¡Derribado!', '#ff5a5a');
+        this.fx.push({ k: 'sfx', s: 'down', c: p.charId, x: ri(p.x), y: ri(p.y) });
         this.toast(`${p.name} ha caído — mantén [F] 10 s a su lado para reanimarle (20 s antes de la Forma Astral)`, '#ff8080');
       }
     }
@@ -402,7 +493,7 @@ class World {
 
   hitEnemy(p, e, base, o = {}) {
     if (e.dead || e.spawning > 0) return 0;
-    let dmg = base * (p ? this.dmgMultOf(p) : 1);
+    let dmg = base * (p ? this.dmgMultOf(p) : 1) * curses.dmgMult(this);
     if (p) {
       if (o.melee) dmg *= p.meleeMult || 1;                              // Garras de Adamantium
       if (o.ab || this.abCtx === p) dmg *= p.abilityMult || 1;           // Cristal Iso-8, Espejo Astral
@@ -410,6 +501,7 @@ class World {
     let crit = false;
     if (p && Math.random() < p.crit + (o.critBonus || 0)) { crit = true; dmg *= o.critMult || 2; }
     const dealt = this.hurtEnemy(e, dmg, { crit, src: p });
+    if (p && dealt >= 30) this.fx.push({ k: 'hit', p: p.id, x: ri(e.x), y: ri(e.y), h: dealt >= 60 ? 2 : 1 });
     if (dealt > 0 && !e.dead) {
       const m = p ? this.dmgMultOf(p) : 1;
       if (o.bleed) this.addStatus(e, 'bleed', 3, (o.bleedDps || 6) * m);
@@ -417,6 +509,7 @@ class World {
       if (o.freeze) this.addStatus(e, 'freeze', e.boss ? o.freeze * 0.35 : o.freeze);
       if (o.slow) this.addStatus(e, 'slow', o.slow);
       if (o.chaos) this.applyChaos(e, p);
+      if (p && p.burnOnHit && !(e.st.burn > 0)) this.addStatus(e, 'burn', 3, 4 * m);   // Sinergia Sobrenatural
       if (p && p.poisonChance && Math.random() < p.poisonChance) this.addStatus(e, 'poison', 4, 5 * m);   // Barril Tóxico
       if (o.kb && !e.boss) {
         const from = o.kbFrom || p;
@@ -447,7 +540,7 @@ class World {
   }
 
   meleeArc(p, range, arc, dmg, o = {}, color = '#ffffff') {
-    this.fx.push({ k: 'slash', x: ri(p.x), y: ri(p.y), a: r2(p.aim), r: range, arc: r2(arc), c: color });
+    this.fx.push({ k: 'slash', x: ri(p.x), y: ri(p.y), a: r2(p.aim), r: range, arc: r2(arc), c: color, s: SLASH_SPRITE[p.charId] });
     let n = 0;
     for (const e of this.enemies) {
       if (e.dead || e.ally || e.spawning > 0) continue;
@@ -507,13 +600,15 @@ class World {
   spawnEnemy(type, x, y, opts = {}) {
     const def = ENEMIES[type] || BOSSES[type];
     const isBoss = !!BOSSES[type] && !opts.clone;
-    let hp = isBoss ? def.hp * this.bossHpScale : def.hp * this.scale.hp * (opts.elite ? 2.5 : 1);
+    let hp = isBoss ? def.hp * this.bossHpScale * (opts.hpMult || 1) : def.hp * this.scale.hp * (opts.elite ? 2.5 : 1);
     if (opts.hp) hp = opts.hp;
+    if (opts.illusion) hp = 1;
     const e = {
       id: nid(), type, def, x, y, r: def.r * (opts.elite ? 1.25 : 1), hp, maxHp: hp,
       speed: def.speed, spd: def.speed, boss: isBoss, clone: !!opts.clone, st: {}, ai: { t: 0 },
       contactCd: 0.5, contactBonus: 1, spawning: opts.noSpawnAnim ? 0 : 0.7, elite: !!opts.elite,
       ally: false, allyT: 0, face: 0, lifesteal: def.lifesteal || 0, master: opts.master || 0,
+      illusion: !!opts.illusion,
     };
     this.enemies.push(e);
     if (isBoss && def.init) def.init(this, e);
@@ -607,7 +702,7 @@ class World {
       if (e.allyT <= 0) { this.fx.push({ k: 'boom', x: ri(e.x), y: ri(e.y), r: 30, c: '#ff4fa0' }); this.killEnemy(e, null, true); return; }
     }
     if (e.st.freeze > 0) return;
-    e.spd = e.speed * (e.st.slow > 0 ? 0.5 : 1) * (this.gems.has('mente') && !e.ally ? 0.85 : 1);
+    e.spd = e.speed * (e.st.slow > 0 ? 0.5 : 1) * (this.gems.has('mente') && !e.ally ? 0.85 : 1) * (e.ally ? 1 : curses.enemySpeed(this));
     if (e.clone) e.def.updateClone(this, e, dt);
     else if (e.boss) e.def.update(this, e, dt);
     else updateEnemy(this, e, dt);
@@ -620,11 +715,13 @@ class World {
     e.hp = 0;
     this.fx.push({ k: 'boom', x: ri(e.x), y: ri(e.y), r: ri(e.r * 1.6), c: e.def.color });
     if (silent) return;
+    if (e.illusion) { this.fx.push({ k: 'ring', x: ri(e.x), y: ri(e.y), r: 30, c: '#ff3b3b' }); return; }
     if (e.def.onDeath) e.def.onDeath(this, e);
     if (!e.ally && !e.clone) {
       this.stats.kills++;
       if (src && src.run) {
         src.run.kills++;
+        src.soulDrain = false;   // "Hambre del Alma" termina al conseguir una baja
         if (src.def && src.def.onKill) src.def.onKill(this, src, e);   // p. ej. Moto Infernal
       }
       if (!e.boss && Math.random() < 0.06) this.spawnPickup('heart', e.x, e.y);
@@ -653,7 +750,7 @@ class World {
 
   contactDamage(dt) {
     for (const e of this.enemies) {
-      if (e.dead || e.spawning > 0 || e.st.freeze > 0 || e.def.ai === 'kamikaze') continue;
+      if (e.dead || e.spawning > 0 || e.st.freeze > 0 || e.def.noContact) continue;
       if (e.contactCd > 0) { e.contactCd -= dt; continue; }
       const base = (e.def.dmg || 10) * (e.contactBonus || 1);
       if (e.ally) {
@@ -668,8 +765,11 @@ class World {
         if (p.downed) continue;
         const rr = e.r + p.r;
         if (d2(e, p) < rr * rr) {
-          const dealt = this.enemyHitPlayer(e, p, base, { bleed: !!e.def.bleed, bleedDps: 5 * this.scale.dmg });
-          if (dealt > 0) e.contactCd = 0.7;
+          const dealt = this.enemyHitPlayer(e, p, base * (e.illusion ? 0.4 : 1), { bleed: !!e.def.bleed, bleedDps: 5 * this.scale.dmg });
+          if (dealt > 0) {
+            e.contactCd = 0.7;
+            if (e.def.bleed) this.fx.push({ k: 'slash', x: ri(p.x), y: ri(p.y), a: r2(Math.atan2(p.y - e.y, p.x - e.x)), r: 34, arc: 1.6, c: '#d01818', s: 'CrimsonSlash' });
+          }
           break;
         }
       }
@@ -708,6 +808,13 @@ class World {
       for (let s = 0; s < STEPS && !pr.dead; s++) {
         pr.x += pr.vx * sdt;
         pr.y += pr.vy * sdt;
+        if (pr.side === 'e' && (pr.bounces || 0) < 2 && curses.bounce(this) && (pr.x < 0 || pr.x > c.w || pr.y < 0 || pr.y > c.h)) {
+          if (pr.x < 0 || pr.x > c.w) pr.vx = -pr.vx;
+          if (pr.y < 0 || pr.y > c.h) pr.vy = -pr.vy;
+          pr.x = clamp(pr.x, 0, c.w); pr.y = clamp(pr.y, 0, c.h);
+          pr.bounces = (pr.bounces || 0) + 1;
+          pr.life = Math.max(pr.life, 1.2);
+        }
         if (pr.x < -20 || pr.y < -20 || pr.x > c.w + 20 || pr.y > c.h + 20) {
           if (pr.boomerang && !pr.returned) { pr.boomT = 0; pr.x = clamp(pr.x, 0, c.w); pr.y = clamp(pr.y, 0, c.h); }
           else { this.projExpire(pr); break; }
@@ -749,7 +856,7 @@ class World {
   }
 
   explode(pr, owner) {
-    this.fx.push({ k: 'boom', x: ri(pr.x), y: ri(pr.y), r: pr.explodeR, c: pr.kind === 'webball' ? '#e8f0ff' : '#ff9a3a' });
+    this.fx.push({ k: 'boom', x: ri(pr.x), y: ri(pr.y), r: pr.explodeR, c: pr.kind === 'webball' ? '#e8f0ff' : '#ff9a3a', s: pr.kind === 'gamma' ? 'SonicPulse' : pr.kind === 'webball' ? undefined : 'ExplosionBoom' });
     this.aoeEnemies(owner, pr.x, pr.y, pr.explodeR, pr.explodeDmg != null ? pr.explodeDmg : pr.dmg, pr.o);
   }
 
@@ -853,8 +960,16 @@ class World {
         if (d2(p, k) > rr * rr) continue;
         if (k.kind === 'heart') { if (p.hp >= p.maxHp) continue; this.healPlayer(p, p.maxHp * 0.25); this.fxText(p.x, p.y - 30, '+Vida', '#ff7a9a'); }
         else if (k.kind === 'chest') this.openChest(p, k);
-        else if (k.kind === 'item') this.giveItem(p, k.itemId);
+        else if (k.kind === 'item') {
+          if (k.lockId === p.id && this.time < k.lockT) continue;
+          if (p.items.length >= MAX_ITEMS) {
+            if (this.time > (p.fullHintT || 0)) { p.fullHintT = this.time + 2.5; this.fxText(p.x, p.y - 50, `Inventario lleno (${MAX_ITEMS}) — pulsa G para soltar`, '#ff9a9a'); }
+            continue;
+          }
+          if (!this.giveItem(p, k.itemId)) continue;
+        }
         else if (k.kind === 'gem') this.giveGem(k.gem, p);
+        else if (k.kind === 'iso') { p.run.isoBonus = (p.run.isoBonus || 0) + (k.amount || 10); this.fxText(p.x, p.y - 40, `+${k.amount || 10} Iso-8`, '#e59aff'); this.fx.push({ k: 'sfx', s: 'coin', x: ri(p.x), y: ri(p.y) }); }
         k.dead = true;
         break;
       }
@@ -876,8 +991,9 @@ class World {
 
   giveItem(p, id) {
     const it = ITEMS[id];
-    if (!it) return;
+    if (!it || p.items.length >= MAX_ITEMS) return false;
     p.items.push(id);
+    p.lastPick = id;
     this.recalc(p);
     if (it.onPick === 'healFull') p.hp = p.maxHp;
     if (it.mods && it.mods.shield) p.shield = p.shieldMax;   // el escudo llega cargado
@@ -892,6 +1008,7 @@ class World {
     p.client.conn.send(JSON.stringify({ t: 'got', id }));
     unlocks.onItemPicked(this, p, it);
     if (p.def.onItem) p.def.onItem(this, p, it, id);   // evoluciones (Hulk-Buster, Fuego Azul)
+    return true;
   }
 
   giveGem(g, p) {
@@ -899,8 +1016,52 @@ class World {
     this.gems.add(g);
     for (const q of this.players.values()) this.recalc(q);
     this.fx.push({ k: 'ring', x: ri(p.x), y: ri(p.y), r: 260, c: GEMS[g].color });
-    this.toast(`💎 ¡${GEMS[g].name}! (${this.gems.size}/6) — ${GEMS[g].buff}`, GEMS[g].color);
+    this.toast(`💎 ¡${GEMS[g].name}! (${this.gems.size}/6) — ${GEMS[g].buff}${this.gems.size < 6 ? ' · ⚠ más riesgo de Sobrecarga Cósmica' : ''}`, GEMS[g].color);
     unlocks.onGemCollected(this);
+    if (this.gems.size === 6) this.activateGauntlet();
+  }
+
+  // Las 6 gemas: Poder del Guantelete (buff masivo, aura multicolor) y fin de las maldiciones.
+  activateGauntlet() {
+    if (this.gauntlet) return;
+    this.gauntlet = true;
+    curses.end(this);
+    for (const q of this.players.values()) {
+      this.recalc(q);
+      q.hp = q.maxHp;
+      this.fx.push({ k: 'ring', x: ri(q.x), y: ri(q.y), r: 320, c: '#ffd76a', s: 'StrangeUlti' });
+    }
+    this.fx.push({ k: 'sfx', s: 'ult', x: 0, y: 0 });
+    this.toast('✊ ¡PODER DEL GUANTELETE! +50% daño, +15% velocidad, −25% enfriamientos y fin de la Sobrecarga Cósmica', '#ffd76a');
+  }
+
+  randomMissingGem() {
+    const miss = GEM_ORDER.filter((g) => !this.gems.has(g));
+    return miss.length ? miss[Math.floor(Math.random() * miss.length)] : null;
+  }
+
+  // Recompensa de reto (desafío, jefes dobles, sala secreta): gema que falte o cofre legendario.
+  rewardGem(x, y, why) {
+    const g = this.randomMissingGem();
+    if (g) { this.spawnPickup('gem', x, y, { gem: g }); this.toast(`💎 ${why}: ¡aparece una Gema del Infinito!`, GEMS[g].color); }
+    else this.spawnPickup('chest', x, y, { rarity: 'legendary' });
+  }
+
+  // ── Goblin Saqueador ──
+  // Huida: se escapa por un portal a una sala vecina (se le puede perseguir). Si vuelve a huir, el ítem se pierde.
+  goblinEscape(e) {
+    const it = ITEMS[e.stolen];
+    this.fx.push({ k: 'ring', x: ri(e.x), y: ri(e.y), r: 60, c: '#9a5aff', s: 'VoidPortal' });
+    if (!e.stolen) { this.killEnemy(e, null, true); return; }
+    const opts = neighbors(this.floor, this.cur.id).filter((id) => id[0] === 'm' || this.roomState.has(id));
+    if (!e.chased && opts.length) {
+      const room = opts[Math.floor(Math.random() * opts.length)];
+      this.goblinChase = { room, itemId: e.stolen };
+      this.toast(`💰 ¡El Goblin huye con ${it ? it.name : 'tu ítem'} a otra sala! Síguelo por el portal (minimapa)`, '#c08aff');
+    } else this.toast(`💨 El Goblin ha escapado con ${it ? it.name : 'tu ítem'}...`, '#ff9a9a');
+    e.stolen = null;
+    this.killEnemy(e, null, true);
+    this.sendMap();
   }
 
   // ───────────────────────── Desbloqueos persistentes ─────────────────────────
@@ -913,81 +1074,185 @@ class World {
   }
 
   // ───────────────────────── Pisos y salas ─────────────────────────
+  // Minimapa: salas del piso (principales en fila, ramas arriba/abajo), visitadas/despejadas,
+  // actual, salidas abiertas (portales) y sala a la que huyó el Goblin.
+  mapData() {
+    const f = this.floor, c = this.cur;
+    const rooms = f.main.map((r, i) => ({ id: r.id, k: r.type === 'boss' ? (r.bosses.length > 1 ? 'boss2' : 'boss') : 'combat', x: i, y: 0, am: r.ambush && this.visited.has(r.id) ? 1 : 0 }));
+    for (const [idx, list] of Object.entries(f.branches)) {
+      list.forEach((kind, j) => rooms.push({ id: `b${idx}${kind}`, k: kind, x: Number(idx), y: j === 0 ? -1 : 1 }));
+    }
+    const sIdx = f.main.findIndex((r) => r.secret);
+    if (sIdx >= 0 && (this.secretShown || this.visited.has(`b${sIdx}secret`))) {
+      const taken = rooms.some((r) => r.x === sIdx && r.y === 1);
+      rooms.push({ id: `b${sIdx}secret`, k: 'secret', x: sIdx, y: taken ? 2 : 1 });
+    }
+    for (const r of rooms) { r.v = this.visited.has(r.id) ? 1 : 0; r.cl = this.roomState.has(r.id) || (c.id === r.id && c.cleared) ? 1 : 0; }
+    const exits = c.cleared ? c.doors.filter((d) => !d.hidden).map((d) => d.target || d.kind) : [];
+    return { t: 'map', fl: this.floorNum, name: this.floorDef.name, rooms, cur: c.id, exits, goblin: this.goblinChase ? this.goblinChase.room : null };
+  }
+
+  sendMap() { if (this.cur && this.floor) this.room.broadcastRun(this.mapData()); }
+
   loadFloor(n) {
+    if (this.goblinChase) { this.toast('💨 El Goblin y su botín se quedan atrás...', '#ff9a9a'); this.goblinChase = null; }
+    curses.end(this);
     this.floorNum = n;
+    this.visited = new Set();
+    this.roomState = new Map();
+    this.branchSpecs = {};
+    this.goblinFloor = false;
+    this.secretShown = false;
     const np = this.players.size;
     this.floor = genFloor(n, np, n === this.secretFloor, this.bossPlan);
     this.floorDef = this.floor.def;
     this.scale = { hp: (1 + 0.35 * (n - 1)) * (1 + 0.55 * (np - 1)), dmg: 1 + 0.18 * (n - 1) };
-    this.bossHpScale = 1 + 0.65 * (np - 1);
+    this.bossHpScale = BOSS_HP_SCALE[Math.min(4, Math.max(1, np))] * (1 + 0.1 * (n - 1));
     for (const p of this.players.values()) { p.run.floorStart = this.time; p.run.floorHit = false; }
-    const fb = BOSSES[this.floorDef.boss];
-    this.toast(`Piso ${n}: ${this.floorDef.name}${fb ? ` — os espera ${fb.name}` : ''}`, '#ffd76a');
-    this.enterRoom(this.floor.main[0], 0, false);
+    const names = this.floorDef.bosses.map((b) => BOSSES[b].name).join(' y ');
+    this.toast(`Piso ${n}: ${this.floorDef.name} — os ${this.floorDef.bosses.length > 1 ? 'esperan' : 'espera'} ${names}`, '#ffd76a');
+    this.enterRoom(this.floor.main[0], 'left');
   }
 
-  enterRoom(spec, mainIndex, isBranch) {
+  // Especificación de una sala por id (las ramas se generan una vez por piso).
+  roomSpec(id) {
+    if (id[0] === 'm') return this.floor.main[Number(id.slice(1))];
+    if (!this.branchSpecs[id]) {
+      const i = Number(id[1]), kind = id.slice(2);
+      this.branchSpecs[id] = branchSpec(kind, this.floorNum, this.players.size, this.floorDef, i);
+    }
+    return this.branchSpecs[id];
+  }
+
+  // Al salir de una sala despejada se guarda su botín para poder volver (portales bidireccionales).
+  saveRoom() {
+    const c = this.cur;
+    if (!c || !c.cleared) return;
+    this.roomState.set(c.id, { pickups: this.pickups.filter((k) => !k.dead) });
+  }
+
+  enterRoom(spec, from = 'left') {
+    const id = spec.id;
+    const isBranch = id[0] === 'b', mainIndex = Number(id[1]);
+    const saved = this.roomState.get(id);
     const c = this.cur = Object.assign({}, spec, {
-      mainIndex, isBranch, waveIdx: -1, waveDelay: 0.9, cleared: false, doors: [], bossSpawned: false, bossDelay: 1.6,
+      mainIndex, isBranch, waveIdx: -1, waveDelay: spec.ambush ? 0.5 : 0.9, cleared: false, doors: [], bossSpawned: false, bossDelay: 1.6,
+      doorGrace: 1.0, timer: spec.timeLimit || 0, timerOn: false, failed: false,
     });
     this.enemies = []; this.projs = []; this.hazards = []; this.pickups = []; this.decoys = []; this.sched = [];
-    this.pull = null; this.bossId = 0;
+    this.pull = null; this.bossId = 0; this.bossIds = [];
+    curses.end(this);
     const ps = [...this.players.values()];
     ps.forEach((p, i) => {
-      p.x = 90;
+      p.x = from === 'right' ? c.w - 170 : 170;   // fuera del portal por el que se llega
       p.y = c.h / 2 + (i - (ps.length - 1) / 2) * 50;
       p.dashT = 0;
       p.st = {};
+      p.stunT = 0;
       p.invulnT = 1.2;
       if (p.downed) { p.downed = false; p.hp = p.maxHp * 0.3; p.revive = 0; p.downT = 0; }
       if (p.astral) this.endAstral(p);
     });
-    if (c.type === 'treasure') {
+    if (saved) {
+      c.cleared = true;
+      this.pickups = saved.pickups;
+      for (const k of this.pickups) k.t = this.time - 1;
+      this.makeDoors();
+      this.toast(`${c.name} (despejada)`, '#9fb4e0');
+    } else if (c.type === 'treasure') {
       const n = ps.length + 1;
       for (let i = 0; i < n; i++) this.spawnPickup('chest', c.w / 2 + (i - (n - 1) / 2) * 110, c.h / 2, { bonus: 0.08 });
       c.cleared = true;
       this.makeDoors();
     }
-    if (c.type === 'boss' || c.type === 'secret') this.toast(`⚠ ${BOSSES[c.boss].name} — ${BOSSES[c.boss].title}`, '#ff6464');
-    else this.toast(c.name, '#cfd8ff');
+    if (!saved) {
+      if (c.type === 'boss') this.toast(`⚠ ${c.bosses.map((b) => `${BOSSES[b].name} — ${BOSSES[b].title}`).join('  ·  ')}`, '#ff6464');
+      else if (c.type === 'challenge') this.toast(`⏱ Desafío: despeja las oleadas en ${c.timeLimit} s para ganar una Gema del Infinito`, '#ff5aa0');
+      else if (c.type === 'secret') this.toast('✨ Sala Secreta: sobrevive a la élite y reclama una Gema del Infinito', '#c070ff');
+      else if (c.type !== 'treasure') this.toast(c.name, '#cfd8ff');
+      if (!c.cleared) curses.roll(this);   // Sobrecarga Cósmica al entrar en combate
+    }
+    // Goblin perseguido: aparece en esta sala con el ítem robado e intenta huir de nuevo.
+    if (this.goblinChase && this.goblinChase.room === id) {
+      const g = this.goblinChase;
+      this.goblinChase = null;
+      const e = this.spawnEnemy('goblin', from === 'right' ? 200 : c.w - 200, c.h / 2 + (Math.random() - 0.5) * 200, { noSpawnAnim: true });
+      e.stolen = g.itemId; e.chased = true; e.ai.state = 'flee'; e.ai.fleeT = 12;
+      this.toast('💰 ¡Ahí está el Goblin! Acaba con él antes de que vuelva a escapar', '#c08aff');
+    }
+    this.visited.add(id);
+    // Sinergia "escudo inicial": el escudo se rellena al entrar en cada sala.
+    if (this.synergies.some((sy) => SYN[sy].shieldOnEnter)) for (const p of this.players.values()) p.shield = p.shieldMax;
+    this.sendMap();
   }
 
-  spawnWave(list, elite) {
-    for (const type of list) {
-      const pos = this.freeSpot(280);
+  // Oleada; en salas de emboscada aparece en anillo alrededor del equipo.
+  spawnWave(list, elite, ambush = false) {
+    const alive = this.alivePlayers();
+    const cx = alive.length ? alive.reduce((a, p) => a + p.x, 0) / alive.length : this.cur.w / 2;
+    const cy = alive.length ? alive.reduce((a, p) => a + p.y, 0) / alive.length : this.cur.h / 2;
+    list.forEach((type, k) => {
+      let pos;
+      if (ambush) {
+        const a = (k / list.length) * TAU + Math.random() * 0.4, rr = 190 + Math.random() * 70;
+        pos = { x: clamp(cx + Math.cos(a) * rr, 60, this.cur.w - 60), y: clamp(cy + Math.sin(a) * rr, 60, this.cur.h - 60) };
+      } else pos = this.freeSpot(280);
       const n = (ENEMIES[type] && ENEMIES[type].group) || 1;   // enjambres (Mini-Ultron)
       for (let i = 0; i < n; i++) {
         const a = (i / n) * TAU;
-        this.spawnEnemy(type, pos.x + (n > 1 ? Math.cos(a) * 34 : 0), pos.y + (n > 1 ? Math.sin(a) * 34 : 0), { elite });
+        this.spawnEnemy(type, pos.x + (n > 1 ? Math.cos(a) * 34 : 0), pos.y + (n > 1 ? Math.sin(a) * 34 : 0), { elite: elite || (ambush && k === 0) });
       }
-    }
+    });
   }
 
   updateRoomLogic(dt) {
     const c = this.cur;
     if (this.transition) return;
-    if (c.cleared) { this.checkDoors(); return; }
-    if (c.type === 'boss' || c.type === 'secret') {
+    if (c.doorGrace > 0) c.doorGrace -= dt;
+    if (c.cleared) { if (c.doorGrace <= 0) this.checkDoors(); return; }
+    if (c.type === 'boss') {
       if (!c.bossSpawned) {
         c.bossDelay -= dt;
         if (c.bossDelay <= 0) {
           c.bossSpawned = true;
-          const b = this.spawnEnemy(c.boss, c.w / 2, c.h * 0.32, { noSpawnAnim: true });
-          this.bossId = b.id;
-          this.fx.push({ k: 'ring', x: ri(b.x), y: ri(b.y), r: 200, c: b.def.color });
+          const n = c.bosses.length;
+          c.bosses.forEach((b, i) => {
+            const e = this.spawnEnemy(b, c.w * (n > 1 ? 0.33 + i * 0.34 : 0.5), c.h * 0.32, { noSpawnAnim: true, hpMult: n > 1 ? DOUBLE_BOSS_HP : 1 });
+            this.bossIds.push(e.id);
+            this.fx.push({ k: 'ring', x: ri(e.x), y: ri(e.y), r: 200, c: e.def.color });
+          });
+          this.bossId = this.bossIds[0];
+          if (n > 1) this.toast('⚠⚠ ¡JEFES DOBLES! Derrotad a los dos', '#ff4040');
         }
         return;
       }
-      if (!this.enemies.some((e) => e.id === this.bossId && !e.dead)) this.clearRoom();
+      const alive = this.bossIds.filter((id) => this.enemies.some((e) => e.id === id && !e.dead));
+      this.bossId = alive[0] || 0;
+      if (!alive.length) this.clearRoom();
       return;
     }
-    if (!this.enemies.some((e) => !e.dead && !e.ally)) {
+    // Desafío cronometrado
+    if (c.type === 'challenge' && c.timerOn && !c.failed) {
+      c.timer -= dt;
+      if (c.timer <= 0) { c.timer = 0; c.failed = true; this.toast('⏱ ¡Tiempo agotado! El desafío ya no dará gema', '#ff8080'); }
+    }
+    if (!this.enemies.some((e) => !e.dead && !e.ally && !e.illusion)) {
       if (c.waveIdx + 1 < c.waves.length) {
         c.waveDelay -= dt;
         if (c.waveDelay <= 0) {
           c.waveIdx++;
-          this.spawnWave(c.waves[c.waveIdx], !!c.elite);
-          c.waveDelay = 1.2;
+          if (c.ambush && c.waveIdx === 0) { this.toast('⚠ ¡EMBOSCADA!', '#ff4040'); this.fx.push({ k: 'shake', s: 8, p: 0 }); }
+          this.spawnWave(c.waves[c.waveIdx], !!c.elite, !!c.ambush);
+          if (c.type === 'challenge') c.timerOn = true;
+          // Goblin Saqueador: acompaña a la 1ª oleada si alguien lleva ítems (máx. 1 por piso).
+          if (c.waveIdx === 0 && c.type === 'combat' && !this.goblinFloor && Math.random() < GOBLIN_CHANCE
+            && [...this.players.values()].some((p) => p.items.length)) {
+            this.goblinFloor = true;
+            const pos = this.freeSpot(320);
+            this.spawnEnemy('goblin', pos.x, pos.y);
+            this.toast('💰 ¡Un Goblin Saqueador! Protege tu inventario', '#c08aff');
+          }
+          c.waveDelay = c.ambush ? 0.6 : 1.2;
         }
       } else this.clearRoom();
     }
@@ -1002,6 +1267,7 @@ class World {
     this.hazards = [];
     this.pull = null;
     this.sched = [];
+    curses.end(this);
     for (const p of this.players.values()) unlocks.onRoomCleared(this, p);
     // Limpiar la sala devuelve a los jugadores en Forma Astral.
     for (const p of this.players.values()) if (p.astral) this.endAstral(p);
@@ -1009,49 +1275,62 @@ class World {
     const cx = c.w / 2, cy = c.h / 2;
     if (c.type === 'combat') {
       if (Math.random() < 0.35) this.spawnPickup('chest', cx, cy);
-      this.toast('¡Sala despejada!', '#9fffb0');
+      this.toast(c.ambush ? '¡Emboscada superada!' : '¡Sala despejada!', '#9fffb0');
+      if (c.ambush) this.spawnPickup('chest', cx + 60, cy, { bonus: 0.1 });
     } else if (c.type === 'vault') {
-      const avail = VAULT_GEMS.filter((g) => !this.gems.has(g));
-      if (avail.length) this.spawnPickup('gem', cx, cy, { gem: avail[Math.floor(Math.random() * avail.length)] });
+      if (Math.random() < 0.35) this.rewardGem(cx, cy, 'La Bóveda guardaba un tesoro');
       else this.spawnPickup('chest', cx, cy, { rarity: 'legendary' });
       this.toast('¡Bóveda abierta!', '#5aa0ff');
-    } else if (c.type === 'boss' || c.type === 'secret') {
-      const def = BOSSES[c.boss];
-      this.stats.bosses++;
-      const gem = c.gem || def.gem;   // la gema depende del piso (los jefes de 1–2 son aleatorios)
-      if (gem && !this.gems.has(gem)) this.spawnPickup('gem', cx, cy, { gem });
+    } else if (c.type === 'challenge') {
+      if (!c.failed) this.rewardGem(cx, cy, `Desafío superado con ${Math.ceil(c.timer)} s de margen`);
+      else this.spawnPickup('chest', cx, cy, { bonus: 0.1 });
+    } else if (c.type === 'secret') {
+      this.rewardGem(cx, cy, 'Sala Secreta superada');
+      this.stats.secretBoss = true;
+      unlocks.onSecretBossDefeated(this);
+    } else if (c.type === 'boss') {
+      const n = c.bosses.length;
+      this.stats.bosses += n;
       this.spawnPickup('chest', cx - 90, cy + 60, { bonus: 0.15 });
       for (const p of this.players.values()) this.spawnPickup('heart', cx + 90 + Math.random() * 60, cy + 60 + Math.random() * 60);
-      this.toast(`¡${def.name} derrotado!`, '#ffd76a');
-      unlocks.onBossDefeated(this, c.boss);
-      if (c.type === 'secret') { this.stats.secretBoss = true; unlocks.onSecretBossDefeated(this); }
-      else {
-        for (const p of this.players.values()) unlocks.onFloorCleared(this, p);
-        if (c.boss === 'galactus') this.stats.galactus = true;
+      this.toast(`¡${c.bosses.map((b) => BOSSES[b].name).join(' y ')} ${n > 1 ? 'derrotados' : 'derrotado'}!`, '#ffd76a');
+      for (const b of c.bosses) unlocks.onBossDefeated(this, b);
+      if (n > 1) {
+        this.stats.doubleBosses++;
+        this.rewardGem(cx, cy - 40, 'Jefes dobles derrotados');
+        this.spawnPickup('chest', cx + 90, cy + 60, { bonus: 0.2 });
+        unlocks.onDoubleBoss(this);
       }
+      for (const p of this.players.values()) unlocks.onFloorCleared(this, p);
     }
     this.makeDoors();
+    this.sendMap();
   }
 
+  // Portales bidireccionales según las conexiones reales del minimapa.
   makeDoors() {
-    const c = this.cur;
+    const c = this.cur, f = this.floor;
     const doors = [];
     const add = (kind, label, x, y, extra = {}) => doors.push(Object.assign({ id: nid(), kind, label, x, y, w: 110, h: 110, count: 0 }, extra));
-    const ex = c.w - 70, ey = c.h / 2;
+    const ex = c.w - 70, lx = 70, ey = c.h / 2;
+    const done = (id) => (this.roomState.has(id) ? ' ✔' : '');
     if (c.type === 'boss') {
-      if (this.floorNum < 4) add('floor', `Bajar al piso ${this.floorNum + 1}`, ex, ey);
-      else if (this.floorNum === 4) {
-        if (this.gems.size >= 6) add('galactus', '¡Las 6 Gemas! Enfrentar a Galactus', ex, ey);
-        add('victory', 'Terminar la run (victoria)', c.w / 2, c.h - 70);
-      } else add('victory', 'Victoria verdadera', ex, ey);
+      if (this.floorDef.last) add('victory', '¡Victoria! Terminar la run', ex, ey);
+      else add('floor', `Bajar al piso ${this.floorNum + 1}`, ex, ey);
+      add('back', '← Sala 3', lx, ey, { target: 'm2' });
     } else if (c.isBranch) {
-      add('next', 'Continuar', ex, ey, { target: c.mainIndex + 1 });
+      add('back', `← Sala ${c.mainIndex + 1}`, lx, ey, { target: `m${c.mainIndex}` });
     } else {
-      const next = this.floor.main[c.mainIndex + 1];
-      add('next', next && next.type === 'boss' ? '⚠ Arena del jefe' : 'Siguiente sala', ex, ey, { target: c.mainIndex + 1 });
-      const br = this.floor.branches[c.mainIndex] || [];
-      br.forEach((b, i) => add(b, b === 'treasure' ? 'Sala del Tesoro' : 'Bóveda (custodiada)', c.w / 2 + (br.length > 1 ? (i ? 160 : -160) : 0), i % 2 ? c.h - 70 : 70));
-      if (c.secret) add('secret', 'Sala Secreta del Engaño', 200 + Math.random() * 200, c.h - 70, { hidden: true });
+      const i = c.mainIndex, next = f.main[i + 1];
+      add('next', next.type === 'boss' ? '⚠ Arena del jefe' : `Sala ${i + 2}${done(next.id)}`, ex, ey, { target: next.id });
+      if (i > 0) add('back', `← Sala ${i}`, lx, ey, { target: f.main[i - 1].id });
+      const br = f.branches[i] || [];
+      const LABEL = { treasure: 'Sala del Tesoro', vault: 'Bóveda (custodiada)', challenge: 'Desafío ⏱ (gema)' };
+      br.forEach((b, j) => {
+        const id = `b${i}${b}`;
+        add(b, LABEL[b] + done(id), c.w / 2 + (br.length > 1 ? (j ? 170 : -170) : 0), j % 2 ? c.h - 70 : 70, { target: id });
+      });
+      if (c.secret) add('secret', 'Sala Secreta', 220 + Math.random() * 200, c.h - 70, { hidden: !this.secretShown, target: `b${i}secret` });
     }
     c.doors = doors;
   }
@@ -1065,8 +1344,10 @@ class World {
         if (alive.some((p) => d2(p, d) < 150 * 150)) {
           d.hidden = false;
           this.stats.secretFound = true;
-          this.toast('✨ ¡Una ilusión se desvanece... has encontrado la Sala Secreta del Engaño!', '#7fdc8a');
-          this.fx.push({ k: 'ring', x: ri(d.x), y: ri(d.y), r: 120, c: '#5fe08a' });
+          this.secretShown = true;
+          this.sendMap();
+          this.toast('✨ ¡Una ilusión se desvanece... has encontrado la Sala Secreta!', '#c070ff');
+          this.fx.push({ k: 'ring', x: ri(d.x), y: ri(d.y), r: 120, c: '#c070ff' });
         } else continue;
       }
       d.count = alive.filter((p) => Math.abs(p.x - d.x) < d.w / 2 && Math.abs(p.y - d.y) < d.h / 2).length;
@@ -1075,14 +1356,12 @@ class World {
   }
 
   doTransition(d) {
-    const c = this.cur;
+    this.saveRoom();
     switch (d.kind) {
-      case 'next': this.enterRoom(this.floor.main[d.target], d.target, false); break;
-      case 'treasure':
-      case 'vault':
-      case 'secret': this.enterRoom(branchSpec(d.kind, this.floorNum, this.players.size, this.floorDef), c.mainIndex, true); break;
+      case 'next': case 'back': case 'treasure': case 'vault': case 'challenge': case 'secret':
+        this.enterRoom(this.roomSpec(d.target), d.kind === 'back' ? 'right' : 'left');
+        break;
       case 'floor': this.loadFloor(this.floorNum + 1); break;
-      case 'galactus': this.loadFloor(5); break;
       case 'victory': this.endRun(true); break;
       default: break;
     }
@@ -1106,12 +1385,13 @@ class World {
     if (this.over) return;
     this.over = true;
     const s = this.stats;
-    const base = s.roomsCleared * 8 + s.bosses * 40 + (this.floorNum - 1) * 20 + (win ? 150 : 0) + (s.galactus ? 300 : 0);
+    const trueWin = win && this.gauntlet;   // victoria con el Guantelete completo
+    const base = s.roomsCleared * 8 + s.bosses * 40 + (this.floorNum - 1) * 20 + (win ? 150 : 0) + (trueWin ? 300 : 0);
     this.result = {
-      win, trueWin: s.galactus, floor: this.floorNum, floorName: this.floorDef.name,
+      win, trueWin, floor: this.floorNum, floorName: this.floorDef.name,
       roomsCleared: s.roomsCleared, bosses: s.bosses, kills: s.kills, gems: [...this.gems], secretBoss: s.secretBoss,
       players: [...this.players.values()].map((p) => ({
-        id: p.id, name: p.name, charId: p.charId, iso: base + p.run.kills,
+        id: p.id, name: p.name, charId: p.charId, iso: base + p.run.kills + (p.run.isoBonus || 0),
         kills: p.run.kills, dealt: Math.round(p.run.dealt), taken: Math.round(p.run.damageTaken), items: p.items.length,
       })),
     };
@@ -1129,8 +1409,10 @@ class World {
   toast(text, c = '#ffffff') { this.room.broadcastRun({ t: 'toast', text, c }); }
 
   // ───────────────────────── Bucle principal ─────────────────────────
+  // Solo existe y se simula la sala ACTIVA (donde están los jugadores): las demás salas del piso
+  // se guardan como datos (roomState: botín en el suelo) y no ejecutan IA, físicas ni colisiones.
   update(dt) {
-    if (this.over) return;
+    if (this.over || !this.players.size) return;
     this.time += dt;
     for (let i = this.sched.length - 1; i >= 0; i--) {
       const s = this.sched[i];
@@ -1155,6 +1437,7 @@ class World {
     this.updateDecoys(dt);
     this.updatePickups();
     this.contactDamage(dt);
+    curses.update(this, dt);
     this.enemies = this.enemies.filter((e) => !e.dead);
     this.updateRoomLogic(dt);
     this.checkLose();
@@ -1162,6 +1445,10 @@ class World {
 
   snapshot() {
     const c = this.cur;
+    const key = this.snapN = (this.snapN || 0) + 1;
+    const full = key % KEYFRAME === 1;
+    if (!this.netLast) this.netLast = { p: new Map() };
+    const last = this.netLast;
     const P = [];
     for (const p of this.players.values()) {
       const def = p.def;
@@ -1175,10 +1462,14 @@ class World {
         m: p.mode === 'stealth' ? 1 : 0, bz: p.berserk ? 1 : 0, ur: p.usedRevive ? 1 : 0, av: p.buffs.avengers > 0 ? 1 : 0,
         st: this.statusBits(p),
         sh: Math.ceil(p.shield), sm: p.shieldMax, sn: p.stunT > 0 ? 1 : 0,
-        au: p.auras, pk: p.pickT > 0 ? p.pickC : 0, dr: p.items.includes('SpyDrone') ? 1 : 0,
+        au: p.auras, pk: p.pickT > 0 ? p.pickC : 0, dr: p.items.includes('SpyDrone') ? 1 : 0, sd: p.soulDrain ? 1 : 0,
         cd: [r2(Math.max(0, p.cd.dash)), r2(Math.max(0, p.cd.ab)), r2(Math.max(0, p.cd.ult))],
         cm: [r2(DASH_CD * p.dashCdMult), r2(def.abilityCd * (def.fixedAbilityCd ? 1 : p.cdMult)), def.ult ? r2(def.ultCd * p.cdMult) : 0],
       });
+      const o = P[P.length - 1];
+      const sk = JSON.stringify(P_STATIC.map((k) => o[k]));
+      if (!full && last.p.get(p.id) === sk) for (const k of P_STATIC) delete o[k];
+      else last.p.set(p.id, sk);
     }
     const E = [];
     for (const e of this.enemies) {
@@ -1193,19 +1484,29 @@ class World {
       if (e.hitFlash > 0) f |= 8192;
       if (e.atkT > 0) f |= 16384;
       if (e.stunned) f |= 32768;
-      E.push([e.id, e.type, ri(e.x), ri(e.y), Math.ceil(e.hp), Math.ceil(e.maxHp), ri(e.r), f, r2(e.face || 0), e.anim || '']);
+      if (e.illusion) f |= 65536;
+      E.push([e.id, e.type, ri(e.x), ri(e.y), Math.ceil(e.hp), Math.ceil(e.maxHp), ri(e.r), f, r2(e.face || 0), e.anim || '', e.stolen || '']);
     }
     const R = this.projs.map((p) => [p.id, ri(p.x), ri(p.y), p.r, p.kind, p.side === 'p' ? 1 : 0, r2(Math.atan2(p.vy, p.vx))]);
     const H = this.hazards.map((h) => [h.id, h.kind, ri(h.x), ri(h.y), ri(h.r || 0), h.delay > 0 ? r2(h.delay / h.delay0) : 0, h.color, r2(h.angle), ri(h.len), ri(h.width), ri(h.tx || 0), ri(h.ty || 0)]);
     const K = this.pickups.map((k) => [k.id, k.kind, ri(k.x), ri(k.y), k.itemId || k.gem || '', k.kind === 'chest' ? k.tier : k.rarity || '']);
     for (const d of this.decoys) K.push([d.id, 'decoy', ri(d.x), ri(d.y), d.charId, r2(d.aim)]);
     const D = c.doors.map((d) => [d.id, ri(d.x), ri(d.y), d.w, d.h, d.kind, d.label, d.count || 0, d.hidden ? 1 : 0]);
-    const out = JSON.stringify({
+    // Parte estática de la sala, portales y datos del equipo: solo si cambian (o en keyframe).
+    const rs = { ty: c.type, w: c.w, h: c.h, th: c.theme, ac: c.accent, bg: c.stage || '', tn: c.tint || '', nm: c.name, fl: this.floorNum, am: c.ambush ? 1 : 0 };
+    const meta = { gems: [...this.gems], bs: this.bossIds, sy: this.synergies, gt: this.gauntlet ? 1 : 0 };
+    const msg = {
       t: 's',
-      room: { ty: c.type, w: c.w, h: c.h, th: c.theme, ac: c.accent, bg: c.stage || '', tn: c.tint || '', nm: c.name, fl: this.floorNum, cl: c.cleared ? 1 : 0, wv: [c.waveIdx + 1, c.waves ? c.waves.length : 0], tr: this.transition ? 1 : 0 },
-      gems: [...this.gems], boss: this.bossId, pull: this.pull ? [ri(this.pull.x), ri(this.pull.y)] : 0,
-      P, E, R, H, K, D, F: this.fx,
-    });
+      room: { cl: c.cleared ? 1 : 0, wv: [c.waveIdx + 1, c.waves ? c.waves.length : 0], tr: this.transition ? 1 : 0, ct: c.type === 'challenge' ? r2(c.timer) : 0, cf: c.failed ? 1 : 0 },
+      boss: this.bossId, cu: this.curse ? [this.curse.g, r2(this.curse.t)] : 0, pull: this.pull ? [ri(this.pull.x), ri(this.pull.y)] : 0,
+      P, E, R, H, K, F: this.fx,
+    };
+    const diff = (name, val) => { const s = JSON.stringify(val); if (full || last[name] !== s) { last[name] = s; msg[name] = val; } };
+    diff('rs', rs);
+    diff('D', D);
+    diff('meta', meta);
+    if (full) msg.kf = 1;
+    const out = JSON.stringify(msg);
     this.fx = [];
     return out;
   }

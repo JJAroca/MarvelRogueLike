@@ -8,7 +8,13 @@ const ENEMIES = {
   // Calle / laboratorio
   grunt:      { name: 'Matón callejero',      hp: 30,  r: 14, speed: 125, dmg: 10, color: '#6a4a32', ai: 'melee' },
   thief:      { name: 'Ladrón',               hp: 20,  r: 13, speed: 185, dmg: 8,  color: '#3a3f4a', ai: 'melee', bleed: true },
-  kamikaze:   { name: 'Robot Kamikaze',       hp: 26,  r: 15, speed: 175, dmg: 26, color: '#8a5a3a', ai: 'kamikaze', blastR: 85 },
+  // Robot Kamikaze: se arma 0,9 s (parpadeo + retícula) y explota: 45–65% de la vida MÁXIMA del
+  // jugador según la distancia, y daño masivo también a enemigos y jefes cercanos (fuego amigo).
+  kamikaze:   { name: 'Robot Kamikaze',       hp: 26,  r: 15, speed: 175, dmg: 0, color: '#8a5a3a', ai: 'kamikaze', blastR: 115, noContact: true,
+                onDeath(w, e) { if (e.ai.state === 'arm') kamikazeBlast(w, e); } },   // si lo matas armado, detona igual
+  // Goblin Saqueador: roba 1 ítem del inventario al tocarte y huye 12 s (luego escapa por un portal).
+  goblin:     { name: 'Goblin Saqueador',     hp: 70,  r: 14, speed: 205, dmg: 5, color: '#6a3a8a', ai: 'goblin', noContact: true,
+                onDeath(w, e) { goblinLoot(w, e); } },
   // A.I.M.
   shooter:    { name: 'Soldado de A.I.M.',    hp: 22,  r: 13, speed: 95,  dmg: 8,  color: '#d4b02a', ai: 'ranged', fireRate: 1.7, projSpeed: 330, range: 300, proj: 'flask' },
   aimlaser:   { name: 'Tirador láser de A.I.M.', hp: 26, r: 13, speed: 100, dmg: 9, color: '#f0c020', ai: 'ranged', fireRate: 1.5, projSpeed: 600, range: 380, proj: 'laser' },
@@ -24,6 +30,49 @@ const ENEMIES = {
   outrider:   { name: 'Outrider',             hp: 40,  r: 15, speed: 175, dmg: 12, color: '#5a5a7a', ai: 'melee' },
   herald:     { name: 'Heraldo cósmico',      hp: 120, r: 18, speed: 215, dmg: 14, color: '#c8d8ff', ai: 'ranged', fireRate: 1.0, projSpeed: 480, range: 340 },
 };
+
+const KAMIKAZE_ARM = 0.9;
+
+// Explosión del kamikaze (también la usan las muertes con el robot ya armado).
+function kamikazeBlast(w, e) {
+  if (e.blown) return;
+  e.blown = true;
+  const R = e.def.blastR || 110, x = Math.round(e.x), y = Math.round(e.y);
+  w.fx.push({ k: 'boom', x, y, r: R, c: '#ff8a2a', s: 'ExplosionBoom' });
+  w.fx.push({ k: 'sprite', s: 'ExplosionBoom', x, y, sz: R * 2.4 });
+  w.fx.push({ k: 'sfx', s: 'impact', x, y });
+  if (!e.ally) {
+    for (const p of w.players.values()) {
+      if (p.downed || p.astral) continue;
+      const d = Math.hypot(p.x - e.x, p.y - e.y);
+      if (d > R + p.r) continue;
+      const frac = 0.65 - 0.2 * Math.min(1, d / R);   // 65% en el centro → 45% en el borde
+      w.hurtPlayer(p, p.maxHp * frac, { trueDmg: true });
+      w.fx.push({ k: 'shake', s: 12, p: p.id });
+    }
+  }
+  // Fuego amigo: daña a enemigos y jefes cercanos (premia esquivar con dash y atraerlos).
+  for (const o of w.enemies) {
+    if (o === e || o.dead || o.ally || o.spawning > 0) continue;
+    const rr = R + o.r;
+    if ((o.x - e.x) ** 2 + (o.y - e.y) ** 2 > rr * rr) continue;
+    w.hurtEnemy(o, o.boss ? 60 + o.maxHp * 0.08 : 160, {});
+    if (o.boss) w.fxText(o.x, o.y - o.r - 26, '¡FUEGO AMIGO!', '#ff9a3a');
+  }
+}
+
+// Muerte del Goblin: suelta el ítem robado + cristales Iso-8.
+function goblinLoot(w, e) {
+  if (e.stolen) {
+    const { ITEMS } = require('./items');
+    const it = ITEMS[e.stolen];
+    w.spawnPickup('item', e.x, e.y, { itemId: e.stolen, rarity: it ? it.rarity : 'common' });
+    w.toast(`💰 ¡Goblin abatido! Recuperáis ${it ? it.name : 'el ítem'}`, '#c08aff');
+    e.stolen = null;
+  }
+  for (let i = 0; i < 3; i++) w.spawnPickup('iso', e.x + (i - 1) * 30, e.y + 26, { amount: 10 });
+  if (w.goblinChase) w.goblinChase = null;
+}
 
 function move(e, ax, ay, spd, dt) {
   const l = Math.hypot(ax, ay);
@@ -88,23 +137,63 @@ function updateEnemy(w, e, dt) {
       break;
     }
 
-    // Robot Kamikaze: corre hacia el jugador; al contacto se arma 0,45 s y explota.
+    // Robot Kamikaze: corre hacia el jugador; cerca se ARMA 0,9 s (telegrafiado) y explota.
     case 'kamikaze': {
       if (ai.state === 'arm') {
         ai.armT -= dt;
-        if (ai.armT <= 0) {
-          const R = d.blastR || 80;
-          w.fx.push({ k: 'boom', x: Math.round(e.x), y: Math.round(e.y), r: R, c: '#ff8a2a' });
-          w.fx.push({ k: 'sprite', s: 'ExplosionBoom', x: Math.round(e.x), y: Math.round(e.y), sz: R * 2.2 });
-          w.fx.push({ k: 'sfx', s: 'impact', x: Math.round(e.x), y: Math.round(e.y) });
-          if (e.ally) w.aoeEnemies(null, e.x, e.y, R, d.dmg * 1.5, {});
-          else w.enemyAoe(e, e.x, e.y, R, d.dmg, {});
-          w.killEnemy(e, null, true);
-        }
+        e.atkT = 0.2;
+        if (ai.armT <= 0) { kamikazeBlast(w, e); w.killEnemy(e, null, true); }
         break;
       }
       move(e, dx, dy, e.spd, dt);
-      if (dist < e.r + (t.r || 16) + 14) { ai.state = 'arm'; ai.armT = 0.45; e.atkT = 0.45; }
+      if (dist < e.r + (t.r || 16) + 26) {
+        ai.state = 'arm'; ai.armT = KAMIKAZE_ARM; e.anim = 'attack';
+        w.fx.push({ k: 'tele', x: Math.round(e.x), y: Math.round(e.y), r: d.blastR || 110, life: KAMIKAZE_ARM, s: 'TargetCrosshair' });
+        w.fxText(e.x, e.y - e.r - 20, '¡AL SUELO!', '#ff4040');
+      }
+      break;
+    }
+
+    // Goblin Saqueador: va a por quien más ítems lleva, roba uno y huye.
+    case 'goblin': {
+      if (ai.state === 'flee') {
+        ai.fleeT -= dt;
+        e.anim = 'run';
+        // Huye del jugador más cercano; si toca pared, se desliza a lo largo de ella.
+        let fx = -dx, fy = -dy;
+        const c = w.cur, m = 90;
+        if (e.x < m || e.x > c.w - m) fx *= 0.2, fy += (fy >= 0 ? 1 : -1) * dist;
+        if (e.y < m || e.y > c.h - m) fy *= 0.2, fx += (fx >= 0 ? 1 : -1) * dist;
+        move(e, fx + Math.sin(ai.t * 3) * dist * 0.3, fy + Math.cos(ai.t * 2.3) * dist * 0.3, e.spd * 1.25, dt);
+        e.face = Math.atan2(fy, fx);
+        if (ai.fleeT <= 0) w.goblinEscape(e);
+        break;
+      }
+      // Objetivo: el jugador vivo con más ítems.
+      let tgt = null;
+      for (const p of w.alivePlayers()) if (!tgt || p.items.length > tgt.items.length) tgt = p;
+      if (!tgt) break;
+      const gx = tgt.x - e.x, gy = tgt.y - e.y, gd = Math.hypot(gx, gy) || 1;
+      e.face = Math.atan2(gy, gx);
+      e.anim = '';
+      move(e, gx, gy, e.spd, dt);
+      ai.grabCd = (ai.grabCd || 0) - dt;
+      if (gd < e.r + tgt.r + 10 && ai.grabCd <= 0) {
+        ai.grabCd = 1.2;
+        e.atkT = 0.4;
+        if (tgt.items.length && !(tgt.invulnT > 0) && !(tgt.dashT > 0)) {
+          const i = Math.floor(Math.random() * tgt.items.length);
+          const id = tgt.items.splice(i, 1)[0];
+          w.recalc(tgt);
+          tgt.client.conn.send(JSON.stringify({ t: 'inv', items: tgt.items }));
+          e.stolen = id;
+          ai.state = 'flee'; ai.fleeT = 12;
+          const { ITEMS } = require('./items');
+          w.fxText(tgt.x, tgt.y - 50, `¡Te ha robado ${ITEMS[id] ? ITEMS[id].name : id}!`, '#c08aff');
+          w.toast(`💰 ¡El Goblin le ha robado ${ITEMS[id] ? ITEMS[id].name : 'un ítem'} a ${tgt.name}! Tenéis 12 s antes de que escape`, '#c08aff');
+          w.fx.push({ k: 'sfx', s: 'coin', x: Math.round(e.x), y: Math.round(e.y) });
+        } else w.enemyHitPlayer(e, tgt, d.dmg, {});
+      }
       break;
     }
 

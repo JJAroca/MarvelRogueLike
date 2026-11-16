@@ -1,5 +1,7 @@
 'use strict';
-// ══════════ EXPANSIÓN: jerarquía de jefes ══════════
+// ══════════ Jefes ══════════
+// En rotación (con sprite real): Juggernaut, Ultrón, Magneto y Carnage (ver floors.js).
+// Thanos, Dormammu, Loki y Galactus siguen definidos pero NO se generan (sin sprite).
 // Piso 1 Magneto · Piso 2 Carnage · Piso 3 Dormammu · Piso 4 Thanos
 // Secreto: Loki (Sala Secreta del Engaño) · Final verdadero: Galactus (requiere las 6 gemas)
 // Todos combaten en arenas grandes con oleadas de refuerzos.
@@ -310,6 +312,9 @@ const BOSSES = {
     update(w, e, dt) {
       const ph2 = e.hp < e.maxHp * 0.5;
       const sm = ph2 ? 1.3 : 1;
+      // Pista de animación para el cliente (hojas Carnage1/Carnage2).
+      e.ai.whipT = (e.ai.whipT || 0) - dt;
+      e.anim = e.ai.state === 'wind' || e.ai.state === 'dash' ? 'charge' : e.ai.state === 'whirl' ? 'whirl' : e.ai.whipT > 0 ? 'whip' : '';
       if (updateCharge(w, e, dt)) return;
       const t = w.targetFor(e);
       if (e.ai.state === 'whirl') {
@@ -318,7 +323,7 @@ const BOSSES = {
         if (t) moveTo(e, t.x, t.y, e.spd * 0.45, dt);
         if (e.ai.tick <= 0) {
           e.ai.tick = 0.2;
-          w.fx.push({ k: 'ring', x: Math.round(e.x), y: Math.round(e.y), r: 135, c: '#ff2020' });
+          w.fx.push({ k: 'ring', x: Math.round(e.x), y: Math.round(e.y), r: 135, c: '#ff2020', s: 'CrimsonSlash' });
           w.enemyAoe(e, e.x, e.y, 135, 9, { bleed: true, bleedDps: 6 * w.scale.dmg });
         }
         if (e.ai.wt <= 0) { e.ai.state = 'walk'; e.ai.cd = 1.2; }
@@ -331,6 +336,7 @@ const BOSSES = {
         if (pat === 'dash') { startCharge(e, t, 0.4, ph2 ? 4 : 3, 1150, 0.32); e.ai.cd = 1.4; }
         else if (pat === 'whirl') { e.ai.state = 'whirl'; e.ai.wt = 1.4; e.ai.tick = 0; w.fxText(e.x, e.y - e.r - 20, '¡Torbellino!', '#ff4040'); }
         else {
+          e.ai.whipT = 1.0;
           for (let k = 0; k < 3; k++) later(w, e, k * 0.3, () => radial(w, e, 12, { speed: 340, r: 7, dmg: 9, kind: 'tendrilE', o: { bleed: true, bleedDps: 5 * w.scale.dmg, heal: 0.6 } }, k * 0.26));
           e.ai.cd = 1.6;
         }

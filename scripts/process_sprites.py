@@ -391,7 +391,7 @@ CONFIG = [
     dict(src='Banner.jpg', name='banner', cell=64),
     dict(src='Doctor-Strange.png', name='doctor-strange', cell=64),
     dict(src='Magneto.jpg', name='magneto', cell=96),
-    dict(src='Carnage.png', name='carnage', cell=96),
+    dict(srcs=['Carnage1.png', 'Carnage2.png'], name='carnage', cell=96, facing='right'),
     dict(src='Soldado-AIM.jpg', name='soldado-aim', cell=64),
     dict(src='Mini-Ultron.jpg', name='mini-ultron', cell=64),
     # ── Actualización: jefes aleatorios, enemigos comunes y Spider-Man 2099 ──
@@ -403,6 +403,8 @@ CONFIG = [
     dict(src='Ladrones.jpg', name='ladrones', cell=64, bg='panel', facing='right', outputs=['thug', 'thief']),
     dict(src='Simbionte.png', name='simbionte', cell=64, facing='right'),
     dict(src='NinjaCibernetico.png', name='ninja', cell=64, facing='right'),
+    dict(srcs=['goblin2.jpg', 'goblin1.jpg'], name='goblin', cell=64, facing='right',
+         clear_bands=[(0.02, 0.10), (0.50, 0.58)]),
 ]
 
 # Fondos por bioma: (archivo, recorte relativo x0, y0, x1, y1) → tesela repetible.
@@ -487,6 +489,9 @@ def process(c, layout, debug_dir=None):
     for si, path in enumerate(paths):
         img = Image.open(path)
         rgba = remove_panel_background(img) if c.get('bg') == 'panel' else remove_background(img)
+        # Franjas con rótulos de texto (p. ej. "IDLE SNEAK" en las hojas del Goblin): se borran.
+        for y0, y1 in c.get('clear_bands', []):
+            rgba[round(y0 * rgba.shape[0]):round(y1 * rgba.shape[0]), :, 3] = 0
         rows = detect_sprites(rgba)
         hs = [s['height'] for r in rows for s in r]
         # Escala por hoja original: la altura típica del cuerpo ocupa ~84% de la celda.
@@ -602,6 +607,35 @@ def process_chests():
     return {'file': 'chests.png', 'cell': 64, 'frames': names}
 
 
+# Gemas del Infinito (sprites/items/Gemas.jpg): fila/índice de la rejilla detectada → gema.
+GEM_PICK = {'espacio': (0, 1), 'mente': (0, 4), 'realidad': (1, 0), 'poder': (1, 2), 'tiempo': (2, 0), 'alma': (3, 1)}
+
+
+def process_gems():
+    p = find_src('Gemas.jpg')
+    if not p:
+        return None
+    rgba = remove_background(Image.open(p))
+    rows = detect_sprites(rgba)
+    d = OUT / 'gems'
+    d.mkdir(exist_ok=True)
+    out = {}
+    for gid, (ri, ci) in GEM_PICK.items():
+        if ri >= len(rows) or ci >= len(rows[ri]):
+            print(f'  ! gema {gid}: no se encuentra la fila {ri}:{ci}')
+            continue
+        x0, y0, x1, y1 = rows[ri][ci]['box']
+        a = trim(rgba[y0:y1, x0:x1])
+        im = Image.fromarray(a)
+        side = max(im.size)
+        sq = Image.new('RGBA', (side, side), (0, 0, 0, 0))
+        sq.paste(im, ((side - im.size[0]) // 2, (side - im.size[1]) // 2), im)
+        sq.resize((64, 64), Image.LANCZOS).save(d / f'{gid}.png', optimize=True)
+        out[gid] = f'gems/{gid}.png'
+    print(f'  gemas: {", ".join(out)} (filas detectadas {[len(r) for r in rows]})')
+    return out
+
+
 def process_ui():
     p = find_src('Barras.jpg')
     if not p:
@@ -695,6 +729,7 @@ def main():
     manifest['stages'] = process_stages()
     manifest['chests'] = process_chests()
     manifest['ui'] = process_ui()
+    manifest['gems'] = process_gems()
     (OUT / 'manifest.json').write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding='utf-8')
     print(f'Listo: {len(manifest["sprites"])} hojas en {OUT}')
 

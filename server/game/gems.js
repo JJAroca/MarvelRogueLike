@@ -10,8 +10,7 @@ const GEMS = {
   mente:    { name: 'Gema de la Mente',    short: 'Mente',    color: '#ffd21f', buff: 'Los enemigos van un 15% más lentos' },
 };
 const GEM_ORDER = ['poder', 'espacio', 'realidad', 'alma', 'tiempo', 'mente'];
-// Gemas que custodian las Bóvedas (el resto las sueltan jefes: Magneto→Poder,
-// Carnage→Alma, Dormammu→Tiempo, Loki secreto→Mente).
-const VAULT_GEMS = ['espacio', 'realidad'];
-
-module.exports = { GEMS, GEM_ORDER, VAULT_GEMS };
+// Las gemas son difíciles de conseguir: desafíos cronometrados, jefes dobles, la Sala Secreta
+// y (35%) las Bóvedas. Cada una aumenta el riesgo de Sobrecarga Cósmica (curses.js);
+// con las 6 se activa el Poder del Guantelete.
+module.exports = { GEMS, GEM_ORDER };

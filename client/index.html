@@ -9,6 +9,21 @@
 <body>
   <canvas id="game"></canvas>
 
+  <!-- Configuración de audio (menú principal, lobby y botón ⚙ del HUD) -->
+  <section id="settings" class="settings hidden">
+    <div class="panel settings-panel">
+      <h3>Configuración · Audio</h3>
+      <label class="vol">Música (BGM) <input type="range" id="vol-music" min="0" max="100"><output id="out-music"></output></label>
+      <label class="vol">Efectos (SFX) <input type="range" id="vol-sfx" min="0" max="100"><output id="out-sfx"></output></label>
+      <label class="vol">Voces <input type="range" id="vol-voice" min="0" max="100"><output id="out-voice"></output></label>
+      <label class="chk"><input type="checkbox" id="vol-mute"> Silenciar todo <kbd>M</kbd></label>
+      <div class="track"><span>Sonando: <b id="track-name">—</b></span><button id="btn-track" type="button">⏭ Cambiar pista</button></div>
+      <p class="hint">Añade canciones a <code>public/audio/music/</code>: rotan por bioma y las que contienen
+        <code>boss</code>, <code>jefe</code> o <code>epic</code> en el nombre suenan en los jefes.</p>
+      <button id="btn-settings-close" class="primary" type="button">Cerrar</button>
+    </div>
+  </section>
+
   <!-- Pantalla de entrada -->
   <section id="join" class="screen">
     <div class="panel join-panel">
@@ -17,6 +32,7 @@
       <label>Nombre de héroe <input id="in-name" maxlength="16" autocomplete="off"></label>
       <label>Código de sala <input id="in-room" maxlength="8" placeholder="MARVEL" autocomplete="off"></label>
       <button id="btn-join" class="primary">Entrar</button>
+      <button class="btn-settings" type="button">⚙ Configuración de audio</button>
       <p id="join-error" class="error"></p>
       <div class="controls">
         <b>Controles</b>
@@ -26,6 +42,7 @@
         <span><kbd>Shift</kbd> / <kbd>Click der.</kbd> habilidad</span>
         <span><kbd>Q</kbd> ulti</span>
         <span><kbd>F</kbd> (mantener 10 s) reanimar a un aliado caído</span>
+        <span><kbd>G</kbd> soltar ítem (o <kbd>Shift</kbd>+clic / clic central en la ranura)</span>
         <span><kbd>M</kbd> silenciar el sonido</span>
       </div>
     </div>
@@ -35,7 +52,8 @@
   <section id="lobby" class="screen hidden">
     <header class="lobby-head">
       <div><h2>Sala <span id="lb-code"></span></h2><small id="lb-phase"></small></div>
-      <div class="iso"><span class="iso-gem"></span><b id="lb-iso">0</b> Iso-8</div>
+      <div class="lobby-right"><button class="btn-settings" type="button">⚙ Audio</button>
+      <div class="iso"><span class="iso-gem"></span><b id="lb-iso">0</b> Iso-8</div></div>
     </header>
     <div class="lobby-cols">
       <section class="panel">
@@ -46,6 +64,7 @@
       <section class="panel">
         <h3>Equipo</h3>
         <ul id="team-list" class="team-list"></ul>
+        <div id="team-syn" class="team-syn"></div>
         <button id="btn-ready" class="primary big">¡Listo!</button>
         <p class="hint">La run empieza cuando todos están listos.</p>
         <div id="profile-stats" class="profile-stats"></div>

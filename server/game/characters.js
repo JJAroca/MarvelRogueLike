@@ -46,7 +46,7 @@ const BASE = {
     },
     ability(w, p) {
       if (p.form === 'hulkbuster') {
-        w.fx.push({ k: 'ring', x: p.x, y: p.y, r: 160, c: '#ff9a3a' });
+        w.fx.push({ k: 'ring', x: p.x, y: p.y, r: 160, c: '#ff9a3a', s: 'HulkSmashCrack' });
         w.aoeEnemies(p, p.x, p.y, 160, 40, { kb: 260, slow: 1.5 });
         return;
       }
@@ -56,7 +56,7 @@ const BASE = {
     },
     ult(w, p) {
       const big = p.form === 'hulkbuster';
-      w.fx.push({ k: 'beam', x: p.x, y: p.y, a: p.aim, len: 950, w: big ? 70 : 46, c: '#9fe8ff' });
+      w.fx.push({ k: 'beam', x: p.x, y: p.y, a: p.aim, len: 950, w: big ? 70 : 46, c: '#9fe8ff', s: 'IronManUniBeam' });
       w.lineEnemies(p, p.x, p.y, p.aim, 950, big ? 70 : 46, big ? 100 : 75, {});
     },
   },
@@ -179,13 +179,13 @@ const BASE = {
       w.startDash(p, { mult: 3.4, dur: 0.28, noCd: true });
       w.schedule(0.28, () => {
         if (p.downed) return;
-        w.fx.push({ k: 'ring', x: p.x, y: p.y, r: 140, c: '#7fe04a' });
+        w.fx.push({ k: 'ring', x: p.x, y: p.y, r: 140, c: '#7fe04a', s: 'HulkSmashCrack' });
         w.aoeEnemies(p, p.x, p.y, 140, 38, { kb: 240 });
       });
     },
     ult(w, p) {
       if (p.form === 'banner') { w.fxText(p.x, p.y - 34, 'Banner no puede...', '#b09aff'); return false; }
-      w.fx.push({ k: 'ring', x: p.x, y: p.y, r: 270, c: '#7fe04a' });
+      w.fx.push({ k: 'ring', x: p.x, y: p.y, r: 270, c: '#7fe04a', s: 'HulkSmashCrack' });
       w.aoeEnemies(p, p.x, p.y, 270, 50, { kb: 320, slow: 2 });
     },
   },
@@ -209,14 +209,14 @@ const BASE = {
         if (q.downed || q.astral || Math.hypot(q.x - p.x, q.y - p.y) > 170) continue;
         w.healPlayer(q, q.maxHp * 0.3);
         if (immune) q.invulnT = Math.max(q.invulnT, 2.5);
-        w.fx.push({ k: 'ring', x: q.x, y: q.y, r: 40, c: '#ffb02e' });
+        w.fx.push({ k: 'ring', x: q.x, y: q.y, r: 40, c: '#ffb02e', s: 'SonicPulse' });
         n++;
       }
-      w.fx.push({ k: 'ring', x: p.x, y: p.y, r: 170, c: immune ? '#ffe680' : '#ffb02e' });
+      w.fx.push({ k: 'ring', x: p.x, y: p.y, r: 170, c: immune ? '#ffe680' : '#ffb02e', s: 'SonicPulse' });
       w.fxText(p.x, p.y - 36, immune ? `Sello de Vishanti: ¡inmunidad! (${n})` : `Sello de Vishanti (${n})`, '#ffb02e');
     },
     ult(w, p) {
-      w.fx.push({ k: 'ring', x: p.x, y: p.y, r: 300, c: '#e0402a' });
+      w.fx.push({ k: 'ring', x: p.x, y: p.y, r: 300, c: '#e0402a', s: 'StrangeUlti' });
       w.aoeEnemies(p, p.x, p.y, 300, 30, { freeze: 3 });
     },
   },

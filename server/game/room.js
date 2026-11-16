@@ -9,6 +9,8 @@ const { ITEMS } = require('./items');
 const { GEMS, GEM_ORDER } = require('./gems');
 const { BOSSES } = require('./bosses');
 const { ENEMIES } = require('./enemies');
+const { synergyMeta } = require('./synergies');
+const { CURSES } = require('./curses');
 
 const STEP = 1 / 60;        // simulación a 60 Hz
 const SNAPSHOT_EVERY = 2;   // estado a 30 Hz
@@ -22,7 +24,9 @@ function isUnlocked(profile, id) {
 // Metadatos estáticos que el cliente necesita para dibujar y mostrar textos.
 const STATIC_META = {
   chars: charMeta(),
-  items: Object.fromEntries(Object.entries(ITEMS).map(([id, it]) => [id, { name: it.name, rarity: it.rarity, desc: it.desc, tags: it.tags || [], icon: it.icon || '', aura: it.aura || '' }])),
+  items: Object.fromEntries(Object.entries(ITEMS).map(([id, it]) => [id, { name: it.name, rarity: it.rarity, desc: it.desc, tags: it.tags || [], icon: it.icon || '', aura: it.aura || '', mods: it.mods || {}, active: it.active || '', poison: it.poison || 0 }])),
+  synergies: synergyMeta(),
+  curses: CURSES,
   gems: GEMS,
   gemOrder: GEM_ORDER,
   bosses: Object.fromEntries(Object.entries(BOSSES).map(([id, b]) => [id, { name: b.name, title: b.title, color: b.color, r: b.r }])),
@@ -79,6 +83,8 @@ class Room {
       if (this.world.players.size > 0) this.world.toast(`${c.name} se ha desconectado`, '#ff9a9a');
     }
     this.broadcastLobby();
+    // Si el que se fue era el único que no estaba listo, la partida empieza.
+    if (this.phase === 'lobby' && this.clients.size && [...this.clients.values()].every((x) => x.ready)) this.startRun();
     this.cleanupIfEmpty();
   }
 
@@ -123,6 +129,9 @@ class Room {
       case 'in':
         if (this.world && c.inRun) this.world.onInput(c.id, m);
         break;
+      case 'drop':   // [G] / Shift+clic / clic central en una ranura del inventario
+        if (this.world && c.inRun) this.world.dropItem(this.world.players.get(c.id), Number.isInteger(m.slot) ? m.slot : null);
+        break;
       default:
         break;
     }
@@ -146,6 +155,8 @@ class Room {
     const dt = Number(now - this.last) / 1e9;
     this.last = now;
     if (!this.world) return;
+    // Pausa total si no queda nadie conectado dentro de la run (la IA y las físicas no corren).
+    if (![...this.clients.values()].some((c) => c.inRun)) { this.acc = 0; return; }
     this.acc += Math.min(dt, 0.25);
     let steps = 0;
     try {
@@ -157,8 +168,11 @@ class Room {
         if (this.world.over) break;
         if (this.frame % SNAPSHOT_EVERY === 0) this.sendSnapshot();
       }
+      this.errors = 0;
     } catch (e) {
       console.error('[world] error en la simulación:', e);
+      // Un error que se repite en cada tick no debe dejar la sala colgada: se cierra la run.
+      if (++this.errors > 30 && this.world) { this.world.toast('Error del servidor: la run se ha cerrado', '#ff8080'); this.world.endRun(false); }
     }
     if (this.world && this.world.over) this.finishRun();
   }

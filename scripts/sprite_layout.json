@@ -99,7 +99,8 @@
         1,
         2,
         3
-      ]
+      ],
+      "flip"
     ],
     "walk_right": [
       2,
@@ -108,8 +109,7 @@
         1,
         2,
         3
-      ],
-      "flip"
+      ]
     ],
     "attack_down": [
       2,
@@ -129,7 +129,8 @@
         4,
         5
       ]
-    ]
+    ],
+    "_facing": "left"
   },
   "ghost-rider-blue": {
     "walk_down": [
@@ -471,67 +472,80 @@
     ]
   },
   "carnage": {
-    "walk_down": [
-      0,
-      [
-        0,
-        1,
-        2,
-        3,
-        4
-      ]
-    ],
-    "walk_up": [
-      0,
-      [
-        5,
-        6,
-        7,
-        8
-      ]
-    ],
-    "walk_left": [
-      1,
-      [
+    "_facing": "right",
+    "walk_right": {
+      "src": 0,
+      "row": 0,
+      "idx": [
         0,
         1,
         2,
         3
       ]
-    ],
-    "walk_right": [
-      1,
-      [
+    },
+    "walk_up": {
+      "src": 1,
+      "row": 0,
+      "idx": [
         0,
         1,
         2,
         3
-      ],
-      "flip"
-    ],
-    "attack": [
-      1,
-      [
-        4,
-        5,
-        6
       ]
-    ],
-    "attack_right": [
-      2,
-      [
-        4,
-        5
+    },
+    "walk_down": {
+      "src": 1,
+      "row": 1,
+      "idx": [
+        0,
+        1,
+        2,
+        3
       ]
-    ],
-    "attack_left": [
-      2,
-      [
-        4,
-        5
-      ],
-      "flip"
-    ]
+    },
+    "charge": {
+      "src": 0,
+      "row": 1,
+      "idx": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "attack_right": {
+      "src": 0,
+      "row": 2,
+      "idx": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "whip": {
+      "src": 0,
+      "row": 3,
+      "idx": [
+        0,
+        1
+      ]
+    },
+    "roar": {
+      "src": 0,
+      "row": 3,
+      "idx": [
+        2
+      ]
+    },
+    "whirl": {
+      "src": 1,
+      "row": 2,
+      "idx": [
+        0,
+        1
+      ]
+    }
   },
   "soldado-aim": {
     "walk_down": [
@@ -1091,5 +1105,85 @@
         5
       ]
     ]
+  },
+  "goblin": {
+    "_facing": "right",
+    "walk_down": {
+      "src": 0,
+      "row": 0,
+      "idx": [
+        0,
+        1,
+        2
+      ]
+    },
+    "walk_up": {
+      "src": 0,
+      "row": 0,
+      "idx": [
+        3,
+        4,
+        5
+      ]
+    },
+    "walk_left": {
+      "src": 0,
+      "row": 1,
+      "idx": [
+        3,
+        4,
+        5
+      ]
+    },
+    "walk_right": {
+      "src": 0,
+      "row": 1,
+      "idx": [
+        0,
+        1,
+        2
+      ]
+    },
+    "idle": {
+      "src": 1,
+      "row": 0,
+      "idx": [
+        0,
+        1,
+        2
+      ]
+    },
+    "run": {
+      "src": 1,
+      "row": 0,
+      "idx": [
+        3,
+        4,
+        5
+      ]
+    },
+    "attack": {
+      "src": 1,
+      "row": 1,
+      "idx": [
+        0,
+        1
+      ]
+    },
+    "hit": {
+      "src": 1,
+      "row": 1,
+      "idx": [
+        2
+      ]
+    },
+    "vanish": {
+      "src": 1,
+      "row": 1,
+      "idx": [
+        3,
+        4
+      ]
+    }
   }
 }

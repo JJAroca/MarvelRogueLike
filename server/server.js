@@ -21,12 +21,24 @@ const MIME = {
   '.ico': 'image/x-icon',
   '.jpg': 'image/jpeg',
   '.mp3': 'audio/mpeg',
+  '.ogg': 'audio/ogg',
+  '.wav': 'audio/wav',
+  '.m4a': 'audio/mp4',
 };
 
 const server = http.createServer((req, res) => {
   let p;
   try { p = decodeURIComponent(req.url.split('?')[0]); } catch (e) { p = '/'; }
   if (p === '/') p = '/index.html';
+  // Lista de pistas de public/audio/music/ (el cliente rota entre ellas según bioma/jefe).
+  if (p === '/audio/music/index.json') {
+    fs.readdir(path.join(PUBLIC, 'audio', 'music'), (err, files) => {
+      const list = err ? [] : files.filter((f) => /\.(mp3|ogg|wav|m4a)$/i.test(f)).sort();
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
+      res.end(JSON.stringify(list));
+    });
+    return;
+  }
   const base = p.startsWith('/sprites_processed/') || p.startsWith('/audio/') ? PUBLIC : CLIENT;
   const fp = path.normalize(path.join(base, p));
   if (!fp.startsWith(base)) { res.writeHead(403); res.end(); return; }
@@ -41,8 +53,13 @@ const rooms = new Map();
 
 ws.attach(server, (conn) => {
   let client = null;
+  const rate = { t: 0, n: 0 };
   conn.on('message', (raw) => {
     let m;
+    // Límite de mensajes por conexión (protege la sala de clientes que inundan el servidor).
+    const now = Date.now();
+    if (now - rate.t > 1000) { rate.t = now; rate.n = 0; }
+    if (++rate.n > 150) return;
     try { m = JSON.parse(raw); } catch (e) { return; }
     if (!m || typeof m !== 'object') return;
     if (!client) {

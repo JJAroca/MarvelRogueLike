@@ -34,13 +34,12 @@ module.exports = {
     for (const p of w.players.values()) w.unlock(p, 'scarlet', 'el equipo reunió 2 Gemas del Infinito');
   },
 
-  // Héroes clásicos (los jefes de los pisos 1–2 son aleatorios, así que cada uno tiene dos caminos):
-  // Spider-Man (Magneto o Juggernaut), Capitán América (Carnage, Ultrón o reanimar), Thor (Dormammu).
+  // Jefes (aleatorios, así que cada héroe tiene dos caminos):
+  // Spider-Man 2099 (Magneto o Juggernaut), Capitán América (Carnage, Ultrón o reanimar).
   onBossDefeated(w, boss) {
     const map = {
-      magneto: ['spiderman', 'derrotasteis a Magneto'], juggernaut: ['spiderman', 'derrotasteis a Juggernaut'],
+      magneto: ['spider2099', 'derrotasteis a Magneto'], juggernaut: ['spider2099', 'derrotasteis a Juggernaut'],
       carnage: ['cap', 'derrotasteis a Carnage'], ultron: ['cap', 'derrotasteis a Ultrón'],
-      dormammu: ['thor', 'derrotasteis a Dormammu'],
     };
     const u = map[boss];
     if (!u) return;
@@ -52,8 +51,13 @@ module.exports = {
     w.unlock(helper, 'cap', 'reanimaste a un aliado caído');
   },
 
-  // Loki: encontrar la Sala Secreta del Engaño y derrotarle como jefe oculto.
+  // Thor: derrotar a una pareja de jefes dobles.
+  onDoubleBoss(w) {
+    for (const p of w.players.values()) w.unlock(p, 'thor', 'derrotasteis a dos jefes a la vez');
+  },
+
+  // Loki: encontrar la Sala Secreta y superar su desafío.
   onSecretBossDefeated(w) {
-    for (const p of w.players.values()) w.unlock(p, 'loki', 'derrotaste a Loki en la Sala Secreta del Engaño');
+    for (const p of w.players.values()) w.unlock(p, 'loki', 'superasteis la Sala Secreta');
   },
 };

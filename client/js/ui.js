@@ -70,6 +70,13 @@ export class UI {
       li.innerHTML = `<span class="dot" style="background:${c?.color};border:2px solid ${c?.color2}"></span><div><b>${esc(p.name)}</b>${p.id === S.me ? ' <small>(tú)</small>' : ''}<br><small>${esc(c?.name || '')}</small></div><span class="st ${p.ready ? 'ok' : ''}">${st}</span>`;
       list.appendChild(li);
     }
+    // Sinergias cooperativas: activas con el equipo actual y combinaciones posibles.
+    const picked = new Set((S.lobby?.players || []).map((p) => p.charId));
+    $('team-syn').innerHTML = (S.synergies || []).map((sy) => {
+      const on = sy.need.every((c) => picked.has(c));
+      const names = sy.need.map((c) => esc(S.chars[c]?.name || c)).join(' + ');
+      return `<div class="syn ${on ? 'on' : ''}" style="--c:${sy.color}"><b>${on ? '🤝 ' : ''}${esc(sy.name)}</b> <small>${names}</small><br><span>${esc(sy.desc)}</span></div>`;
+    }).join('');
     const btn = $('btn-ready');
     btn.disabled = phase === 'run';
     btn.textContent = me?.ready ? 'Cancelar listo' : '¡Listo!';
@@ -125,9 +132,9 @@ export class UI {
       $('end-gems').innerHTML = '';
       return;
     }
-    $('end-title').textContent = r.trueWin ? '¡VICTORIA VERDADERA! Galactus ha caído' : r.win ? '¡VICTORIA!' : 'DERROTA';
+    $('end-title').textContent = r.trueWin ? '¡VICTORIA VERDADERA! Con el Guantelete completo' : r.win ? '¡VICTORIA!' : 'DERROTA';
     $('end-title').style.color = r.win ? '#ffd76a' : '#ff6464';
-    $('end-sub').textContent = `Piso ${r.floor} · ${r.floorName} — ${r.roomsCleared} salas, ${r.bosses} jefes, ${r.kills} enemigos${r.secretBoss ? ' · ¡Loki secreto derrotado!' : ''}`;
+    $('end-sub').textContent = `Piso ${r.floor} · ${r.floorName} — ${r.roomsCleared} salas, ${r.bosses} jefes, ${r.kills} enemigos${r.secretBoss ? ' · ¡Sala Secreta superada!' : ''}`;
     $('end-gems').innerHTML = this.S.gemOrder.map((g) => {
       const gm = this.S.gems[g];
       const has = r.gems.includes(g);

@@ -4,8 +4,19 @@
 const fs = require('fs');
 const path = require('path');
 
-const DIR = path.join(__dirname, '..', 'data');
+// DATA_DIR permite guardar los perfiles en un volumen persistente (p. ej. /data en Fly.io).
+const BUNDLED = path.join(__dirname, '..', 'data');
+const DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : BUNDLED;
 const FILE = path.join(DIR, 'profiles.json');
+
+// Primer arranque con un volumen vacío: se copian los perfiles incluidos en el proyecto.
+if (DIR !== BUNDLED && !fs.existsSync(FILE)) {
+  try {
+    fs.mkdirSync(DIR, { recursive: true });
+    fs.copyFileSync(path.join(BUNDLED, 'profiles.json'), FILE);
+    console.log('[perfiles] copiados al volumen', FILE);
+  } catch (e) { /* sin perfiles iniciales */ }
+}
 
 let db = {};
 try { db = JSON.parse(fs.readFileSync(FILE, 'utf8')) || {}; } catch (e) { db = {}; }
@@ -19,6 +30,8 @@ function normalize(p, name) {
   p.iso8 = Number.isFinite(p.iso8) ? p.iso8 : 0;
   p.upgrades = Object.assign({ hp: 0, dmg: 0, speed: 0, rare: 0 }, p.upgrades);
   p.unlocked = p.unlocked || {};
+  // Spider-Man clásico se retiró: quien lo tenía desbloqueado recibe a Spider-Man 2099.
+  if (p.unlocked.spiderman) p.unlocked.spider2099 = true;
   p.stats = Object.assign({ runs: 0, wins: 0, bestFloor: 0 }, p.stats);
   return p;
 }

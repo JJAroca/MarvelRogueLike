@@ -69,7 +69,8 @@
           "frames": 6
         }
       },
-      "source": "Hulk-Buster.jpg"
+      "source": "Hulk-Buster.jpg",
+      "facing": "left"
     },
     "ghost-rider-blue": {
       "file": "ghost-rider-blue.png",
@@ -281,36 +282,41 @@
       "file": "carnage.png",
       "cell": 96,
       "anims": {
-        "walk_down": {
+        "walk_right": {
           "row": 0,
-          "frames": 5
+          "frames": 4
         },
         "walk_up": {
           "row": 1,
           "frames": 4
         },
-        "walk_left": {
+        "walk_down": {
           "row": 2,
           "frames": 4
         },
-        "walk_right": {
+        "charge": {
           "row": 3,
           "frames": 4
         },
-        "attack": {
-          "row": 4,
-          "frames": 3
-        },
         "attack_right": {
+          "row": 4,
+          "frames": 4
+        },
+        "whip": {
           "row": 5,
           "frames": 2
         },
-        "attack_left": {
+        "roar": {
           "row": 6,
+          "frames": 1
+        },
+        "whirl": {
+          "row": 7,
           "frames": 2
         }
       },
-      "source": "Carnage.png"
+      "source": "Carnage1.png, Carnage2.png",
+      "facing": "right"
     },
     "soldado-aim": {
       "file": "soldado-aim.png",
@@ -637,6 +643,50 @@
       },
       "source": "NinjaCibernetico.png",
       "facing": "right"
+    },
+    "goblin": {
+      "file": "goblin.png",
+      "cell": 64,
+      "anims": {
+        "walk_down": {
+          "row": 0,
+          "frames": 3
+        },
+        "walk_up": {
+          "row": 1,
+          "frames": 3
+        },
+        "walk_left": {
+          "row": 2,
+          "frames": 3
+        },
+        "walk_right": {
+          "row": 3,
+          "frames": 3
+        },
+        "idle": {
+          "row": 4,
+          "frames": 3
+        },
+        "run": {
+          "row": 5,
+          "frames": 3
+        },
+        "attack": {
+          "row": 6,
+          "frames": 2
+        },
+        "hit": {
+          "row": 7,
+          "frames": 1
+        },
+        "vanish": {
+          "row": 8,
+          "frames": 2
+        }
+      },
+      "source": "goblin2.jpg, goblin1.jpg",
+      "facing": "right"
     }
   },
   "items": [
@@ -828,5 +878,13 @@
       "w": 297,
       "h": 350
     }
+  },
+  "gems": {
+    "espacio": "gems/espacio.png",
+    "mente": "gems/mente.png",
+    "realidad": "gems/realidad.png",
+    "poder": "gems/poder.png",
+    "tiempo": "gems/tiempo.png",
+    "alma": "gems/alma.png"
   }
 }

@@ -1,18 +1,26 @@
 {
   "juanjo": {
     "name": "Juanjo",
-    "iso8": 203,
+    "iso8": 671,
     "upgrades": {
-      "hp": 1,
+      "hp": 2,
       "dmg": 2,
-      "speed": 0,
-      "rare": 0
+      "speed": 5,
+      "rare": 3
     },
-    "unlocked": {},
+    "unlocked": {
+      "spiderman": true,
+      "scarlet": true,
+      "wolverine": true,
+      "thor": true,
+      "spider2099": true,
+      "cap": true,
+      "venom": true
+    },
     "stats": {
-      "runs": 8,
-      "wins": 0,
-      "bestFloor": 1
+      "runs": 17,
+      "wins": 1,
+      "bestFloor": 4
     }
   },
   "jose": {

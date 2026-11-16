@@ -1,0 +1,8 @@
+# Solo se sube lo que el servidor necesita (los sprites originales pesan ~70 MB).
+.git
+node_modules
+sprites
+audio_raw
+scripts
+*.md
+.env

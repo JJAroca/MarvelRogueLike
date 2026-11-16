@@ -1,0 +1,16 @@
+# Render (plan gratuito). En el panel: New + > Blueprint > elige este repositorio.
+# Ojo: en el plan gratis el servicio se duerme tras ~15 min sin uso (tarda ~30 s en despertar)
+# y el disco no es persistente: los perfiles vuelven a los de data/profiles.json en cada reinicio.
+services:
+  - type: web
+    name: marvel-roguelike
+    runtime: node
+    plan: free
+    region: ohio
+    buildCommand: echo "sin dependencias que instalar"
+    startCommand: node server/server.js
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
